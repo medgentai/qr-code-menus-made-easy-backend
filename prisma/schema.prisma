@@ -1,0 +1,485 @@
+generator client {
+  provider = "prisma-client-js"
+  seed     = "ts-node prisma/seed.ts"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String               @id @default(uuid())
+  email              String               @unique
+  name               String
+  password           String
+  role               UserRole             @default(USER)
+  status             UserStatus           @default(ACTIVE)
+  profileImageUrl    String?
+  phoneNumber        String?
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+  lastLoginAt        DateTime?            @map("last_login_at")
+  emailVerifiedAt    DateTime?            @map("email_verified_at")
+  isEmailVerified    Boolean              @default(false) @map("is_email_verified")
+  otpCode            String?              @map("otp_code")
+  otpExpiresAt       DateTime?            @map("otp_expires_at")
+  refreshToken       String?              @map("refresh_token")
+  organizations      OrganizationMember[]
+  ownedOrganizations Organization[]       @relation("OrganizationOwner")
+  sessions           Session[]
+  payments           Payment[]
+  subscriptions      Subscription[]
+
+  @@map("users")
+}
+
+model Session {
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  token         String    @unique
+  refreshToken  String?   @map("refresh_token")
+  deviceInfo    Json?     @map("device_info")
+  ipAddress     String?   @map("ip_address")
+  userAgent     String?   @map("user_agent")
+  lastUsed      DateTime  @default(now()) @map("last_used")
+  expiresAt     DateTime  @map("expires_at")
+  isRevoked     Boolean   @default(false) @map("is_revoked")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model Organization {
+  id            String               @id @default(uuid())
+  name          String
+  slug          String               @unique
+  description   String?
+  logoUrl       String?
+  websiteUrl    String?
+  type          OrganizationType
+  ownerId       String               @map("owner_id")
+  planId        String?              @map("plan_id")
+  planStartDate DateTime?            @map("plan_start_date")
+  planEndDate   DateTime?            @map("plan_end_date")
+  isActive      Boolean              @default(true) @map("is_active")
+  createdAt     DateTime             @default(now()) @map("created_at")
+  updatedAt     DateTime             @updatedAt @map("updated_at")
+  menus         Menu[]
+  members       OrganizationMember[]
+  owner         User                 @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  plan          Plan?                @relation(fields: [planId], references: [id], onDelete: SetNull)
+  venues        Venue[]
+  payments      Payment[]
+  subscriptions Subscription[]
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  userId         String       @map("user_id")
+  role           MemberRole   @default(MEMBER)
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@map("organization_members")
+}
+
+model Venue {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  name           String
+  description    String?
+  address        String?
+  city           String?
+  state          String?
+  country        String?
+  postalCode     String?      @map("postal_code")
+  phoneNumber    String?      @map("phone_number")
+  email          String?
+  imageUrl       String?      @map("image_url")
+  isActive       Boolean      @default(true) @map("is_active")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  qrCodes        QrCode[]
+  tables         Table[]
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payments       Payment[]
+
+  @@map("venues")
+}
+
+model Table {
+  id        String      @id @default(uuid())
+  venueId   String      @map("venue_id")
+  name      String
+  capacity  Int?
+  status    TableStatus @default(AVAILABLE)
+  location  String?
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+  orders    Order[]
+  qrCode    QrCode?
+  venue     Venue       @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@map("tables")
+}
+
+model Menu {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  name           String
+  description    String?
+  isActive       Boolean      @default(true) @map("is_active")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  categories     Category[]
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  qrCodes        QrCode[]
+
+  @@map("menus")
+}
+
+model Category {
+  id           String     @id @default(uuid())
+  menuId       String     @map("menu_id")
+  name         String
+  description  String?
+  imageUrl     String?    @map("image_url")
+  displayOrder Int        @default(0) @map("display_order")
+  isActive     Boolean    @default(true) @map("is_active")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  menu         Menu       @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  items        MenuItem[]
+
+  @@map("categories")
+}
+
+model MenuItem {
+  id              String                    @id @default(uuid())
+  categoryId      String                    @map("category_id")
+  name            String
+  description     String?
+  price           Decimal                   @db.Decimal(10, 2)
+  discountPrice   Decimal?                  @map("discount_price") @db.Decimal(10, 2)
+  imageUrl        String?                   @map("image_url")
+  preparationTime Int?                      @map("preparation_time")
+  calories        Int?
+  isVegetarian    Boolean                   @default(false) @map("is_vegetarian")
+  isVegan         Boolean                   @default(false) @map("is_vegan")
+  isGlutenFree    Boolean                   @default(false) @map("is_gluten_free")
+  spicyLevel      Int?                      @map("spicy_level")
+  allergens       String?
+  displayOrder    Int                       @default(0) @map("display_order")
+  isAvailable     Boolean                   @default(true) @map("is_available")
+  createdAt       DateTime                  @default(now()) @map("created_at")
+  updatedAt       DateTime                  @updatedAt @map("updated_at")
+  category        Category                  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  modifierGroups  ModifierGroupOnMenuItem[]
+  orderItems      OrderItem[]
+
+  @@map("menu_items")
+}
+
+model ModifierGroup {
+  id           String                    @id @default(uuid())
+  name         String
+  description  String?
+  required     Boolean                   @default(false)
+  multiSelect  Boolean                   @default(false) @map("multi_select")
+  minSelect    Int                       @default(0) @map("min_select")
+  maxSelect    Int?                      @map("max_select")
+  displayOrder Int                       @default(0) @map("display_order")
+  createdAt    DateTime                  @default(now()) @map("created_at")
+  updatedAt    DateTime                  @updatedAt @map("updated_at")
+  menuItems    ModifierGroupOnMenuItem[]
+  modifiers    Modifier[]
+
+  @@map("modifier_groups")
+}
+
+model ModifierGroupOnMenuItem {
+  menuItemId      String        @map("menu_item_id")
+  modifierGroupId String        @map("modifier_group_id")
+  displayOrder    Int           @default(0) @map("display_order")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  menuItem        MenuItem      @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+
+  @@id([menuItemId, modifierGroupId])
+  @@map("modifier_group_menu_items")
+}
+
+model Modifier {
+  id                 String              @id @default(uuid())
+  modifierGroupId    String              @map("modifier_group_id")
+  name               String
+  price              Decimal             @default(0) @db.Decimal(10, 2)
+  displayOrder       Int                 @default(0) @map("display_order")
+  isAvailable        Boolean             @default(true) @map("is_available")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  modifierGroup      ModifierGroup       @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+  orderItemModifiers OrderItemModifier[]
+
+  @@map("modifiers")
+}
+
+model QrCode {
+  id          String       @id @default(uuid())
+  venueId     String       @map("venue_id")
+  menuId      String       @map("menu_id")
+  tableId     String?      @unique @map("table_id")
+  name        String
+  description String?
+  qrCodeUrl   String       @map("qr_code_url")
+  qrCodeData  String       @map("qr_code_data")
+  isActive    Boolean      @default(true) @map("is_active")
+  scanCount   Int          @default(0) @map("scan_count")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  scans       QrCodeScan[]
+  menu        Menu         @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  table       Table?       @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  venue       Venue        @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@map("qr_codes")
+}
+
+model QrCodeScan {
+  id        String   @id @default(uuid())
+  qrCodeId  String   @map("qr_code_id")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  scannedAt DateTime @default(now()) @map("scanned_at")
+  qrCode    QrCode   @relation(fields: [qrCodeId], references: [id], onDelete: Cascade)
+
+  @@map("qr_code_scans")
+}
+
+model Order {
+  id            String      @id @default(uuid())
+  tableId       String?     @map("table_id")
+  customerName  String?     @map("customer_name")
+  customerEmail String?     @map("customer_email")
+  customerPhone String?     @map("customer_phone")
+  roomNumber    String?     @map("room_number")
+  status        OrderStatus @default(PENDING)
+  totalAmount   Decimal     @default(0) @map("total_amount") @db.Decimal(10, 2)
+  notes         String?
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+  completedAt   DateTime?   @map("completed_at")
+  items         OrderItem[]
+  table         Table?      @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  payments      Payment[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id         String              @id @default(uuid())
+  orderId    String              @map("order_id")
+  menuItemId String              @map("menu_item_id")
+  quantity   Int                 @default(1)
+  unitPrice  Decimal             @map("unit_price") @db.Decimal(10, 2)
+  totalPrice Decimal             @map("total_price") @db.Decimal(10, 2)
+  notes      String?
+  status     OrderItemStatus     @default(PENDING)
+  createdAt  DateTime            @default(now()) @map("created_at")
+  updatedAt  DateTime            @updatedAt @map("updated_at")
+  modifiers  OrderItemModifier[]
+  menuItem   MenuItem            @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  order      Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_items")
+}
+
+model OrderItemModifier {
+  id          String    @id @default(uuid())
+  orderItemId String    @map("order_item_id")
+  modifierId  String    @map("modifier_id")
+  price       Decimal   @db.Decimal(10, 2)
+  modifier    Modifier  @relation(fields: [modifierId], references: [id], onDelete: Cascade)
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@map("order_item_modifiers")
+}
+
+model Payment {
+  id                String        @id @default(uuid())
+  orderId           String?       @map("order_id")
+  subscriptionId    String?       @map("subscription_id")
+  organizationId    String?       @map("organization_id")
+  venueId           String?       @map("venue_id")
+  userId            String        @map("user_id")
+  amount            Decimal       @db.Decimal(10, 2)
+  currency          String        @default("INR")
+  paymentMethod     PaymentMethod
+  status            PaymentStatus @default(PENDING)
+  paymentType       PaymentType   @default(ORDER)
+  razorpayOrderId   String?       @map("razorpay_order_id")
+  razorpayPaymentId String?       @map("razorpay_payment_id")
+  razorpaySignature String?       @map("razorpay_signature")
+  transactionId     String?       @map("transaction_id")
+  receipt           String?
+  notes             String?
+  metadata          Json?
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  order             Order?        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  subscription      Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  organization      Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  venue             Venue?        @relation(fields: [venueId], references: [id], onDelete: SetNull)
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+model Subscription {
+  id               String            @id @default(uuid())
+  organizationId   String            @map("organization_id")
+  planId           String            @map("plan_id")
+  userId           String            @map("user_id")
+  status           SubscriptionStatus @default(ACTIVE)
+  billingCycle     BillingCycle      @default(MONTHLY)
+  currentPeriodStart DateTime        @map("current_period_start")
+  currentPeriodEnd   DateTime        @map("current_period_end")
+  cancelAtPeriodEnd  Boolean         @default(false) @map("cancel_at_period_end")
+  canceledAt         DateTime?       @map("canceled_at")
+  trialStart         DateTime?       @map("trial_start")
+  trialEnd           DateTime?       @map("trial_end")
+  venuesIncluded     Int             @default(1) @map("venues_included")
+  venuesUsed         Int             @default(0) @map("venues_used")
+  amount             Decimal         @db.Decimal(10, 2)
+  currency           String          @default("INR")
+  metadata           Json?
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+  organization       Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan               Plan            @relation(fields: [planId], references: [id], onDelete: Restrict)
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments           Payment[]
+
+  @@map("subscriptions")
+}
+
+model Plan {
+  id                String         @id @default(uuid())
+  name              String
+  description       String?
+  organizationType  OrganizationType
+  monthlyPrice      Decimal        @map("monthly_price") @db.Decimal(10, 2)
+  annualPrice       Decimal        @map("annual_price") @db.Decimal(10, 2)
+  features          String[]
+  venuesIncluded    Int            @default(1) @map("venues_included")
+  isActive          Boolean        @default(true) @map("is_active")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  organizations     Organization[]
+  subscriptions     Subscription[]
+
+  @@map("plans")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum OrganizationType {
+  RESTAURANT
+  HOTEL
+  CAFE
+  FOOD_TRUCK
+  BAR
+  OTHER
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MANAGER
+  STAFF
+  MEMBER
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  MAINTENANCE
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  DELIVERED
+  COMPLETED
+  CANCELLED
+}
+
+enum OrderItemStatus {
+  PENDING
+  PREPARING
+  READY
+  DELIVERED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  CREDIT_CARD
+  DEBIT_CARD
+  UPI
+  NET_BANKING
+  WALLET
+  MOBILE_PAYMENT
+  ROOM_CHARGE
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentType {
+  ORDER
+  SUBSCRIPTION
+  VENUE_CREATION
+  ORGANIZATION_SETUP
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  CANCELLED
+  EXPIRED
+  TRIAL
+  PAST_DUE
+}
+
+enum BillingCycle {
+  MONTHLY
+  ANNUAL
+}
