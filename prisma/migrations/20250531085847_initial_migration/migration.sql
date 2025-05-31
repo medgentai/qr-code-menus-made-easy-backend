@@ -20,10 +20,19 @@ CREATE TYPE "OrderStatus" AS ENUM ('PENDING', 'CONFIRMED', 'PREPARING', 'READY',
 CREATE TYPE "OrderItemStatus" AS ENUM ('PENDING', 'PREPARING', 'READY', 'DELIVERED', 'COMPLETED', 'CANCELLED');
 
 -- CreateEnum
-CREATE TYPE "PaymentMethod" AS ENUM ('CASH', 'CREDIT_CARD', 'DEBIT_CARD', 'MOBILE_PAYMENT', 'ROOM_CHARGE', 'OTHER');
+CREATE TYPE "PaymentMethod" AS ENUM ('CASH', 'CREDIT_CARD', 'DEBIT_CARD', 'UPI', 'NET_BANKING', 'WALLET', 'MOBILE_PAYMENT', 'ROOM_CHARGE', 'OTHER');
 
 -- CreateEnum
 CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'COMPLETED', 'FAILED', 'REFUNDED');
+
+-- CreateEnum
+CREATE TYPE "PaymentType" AS ENUM ('ORDER', 'SUBSCRIPTION', 'VENUE_CREATION', 'ORGANIZATION_SETUP');
+
+-- CreateEnum
+CREATE TYPE "SubscriptionStatus" AS ENUM ('ACTIVE', 'INACTIVE', 'CANCELLED', 'EXPIRED', 'TRIAL', 'PAST_DUE');
+
+-- CreateEnum
+CREATE TYPE "BillingCycle" AS ENUM ('MONTHLY', 'ANNUAL');
 
 -- CreateTable
 CREATE TABLE "users" (
@@ -38,6 +47,11 @@ CREATE TABLE "users" (
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
     "last_login_at" TIMESTAMP(3),
+    "email_verified_at" TIMESTAMP(3),
+    "is_email_verified" BOOLEAN NOT NULL DEFAULT false,
+    "otp_code" TEXT,
+    "otp_expires_at" TIMESTAMP(3),
+    "refresh_token" TEXT,
 
     CONSTRAINT "users_pkey" PRIMARY KEY ("id")
 );
@@ -47,7 +61,13 @@ CREATE TABLE "sessions" (
     "id" TEXT NOT NULL,
     "user_id" TEXT NOT NULL,
     "token" TEXT NOT NULL,
+    "refresh_token" TEXT,
+    "device_info" JSONB,
+    "ip_address" TEXT,
+    "user_agent" TEXT,
+    "last_used" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "expires_at" TIMESTAMP(3) NOT NULL,
+    "is_revoked" BOOLEAN NOT NULL DEFAULT false,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -128,8 +148,6 @@ CREATE TABLE "menus" (
     "name" TEXT NOT NULL,
     "description" TEXT,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
-    "start_date" TIMESTAMP(3),
-    "end_date" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -291,12 +309,23 @@ CREATE TABLE "order_item_modifiers" (
 -- CreateTable
 CREATE TABLE "payments" (
     "id" TEXT NOT NULL,
-    "order_id" TEXT NOT NULL,
+    "order_id" TEXT,
+    "subscription_id" TEXT,
+    "organization_id" TEXT,
+    "venue_id" TEXT,
+    "user_id" TEXT NOT NULL,
     "amount" DECIMAL(10,2) NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'INR',
     "paymentMethod" "PaymentMethod" NOT NULL,
     "status" "PaymentStatus" NOT NULL DEFAULT 'PENDING',
+    "paymentType" "PaymentType" NOT NULL DEFAULT 'ORDER',
+    "razorpay_order_id" TEXT,
+    "razorpay_payment_id" TEXT,
+    "razorpay_signature" TEXT,
     "transaction_id" TEXT,
+    "receipt" TEXT,
     "notes" TEXT,
+    "metadata" JSONB,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -304,13 +333,40 @@ CREATE TABLE "payments" (
 );
 
 -- CreateTable
+CREATE TABLE "subscriptions" (
+    "id" TEXT NOT NULL,
+    "organization_id" TEXT NOT NULL,
+    "plan_id" TEXT NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "status" "SubscriptionStatus" NOT NULL DEFAULT 'ACTIVE',
+    "billingCycle" "BillingCycle" NOT NULL DEFAULT 'MONTHLY',
+    "current_period_start" TIMESTAMP(3) NOT NULL,
+    "current_period_end" TIMESTAMP(3) NOT NULL,
+    "cancel_at_period_end" BOOLEAN NOT NULL DEFAULT false,
+    "canceled_at" TIMESTAMP(3),
+    "trial_start" TIMESTAMP(3),
+    "trial_end" TIMESTAMP(3),
+    "venues_included" INTEGER NOT NULL DEFAULT 1,
+    "venues_used" INTEGER NOT NULL DEFAULT 0,
+    "amount" DECIMAL(10,2) NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'INR',
+    "metadata" JSONB,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "subscriptions_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "plans" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "description" TEXT,
+    "organizationType" "OrganizationType" NOT NULL,
     "monthly_price" DECIMAL(10,2) NOT NULL,
     "annual_price" DECIMAL(10,2) NOT NULL,
     "features" TEXT[],
+    "venues_included" INTEGER NOT NULL DEFAULT 1,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
@@ -373,13 +429,13 @@ ALTER TABLE "modifier_group_menu_items" ADD CONSTRAINT "modifier_group_menu_item
 ALTER TABLE "modifiers" ADD CONSTRAINT "modifiers_modifier_group_id_fkey" FOREIGN KEY ("modifier_group_id") REFERENCES "modifier_groups"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "qr_codes" ADD CONSTRAINT "qr_codes_venue_id_fkey" FOREIGN KEY ("venue_id") REFERENCES "venues"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "qr_codes" ADD CONSTRAINT "qr_codes_menu_id_fkey" FOREIGN KEY ("menu_id") REFERENCES "menus"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "qr_codes" ADD CONSTRAINT "qr_codes_menu_id_fkey" FOREIGN KEY ("menu_id") REFERENCES "menus"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "qr_codes" ADD CONSTRAINT "qr_codes_table_id_fkey" FOREIGN KEY ("table_id") REFERENCES "tables"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "qr_codes" ADD CONSTRAINT "qr_codes_venue_id_fkey" FOREIGN KEY ("venue_id") REFERENCES "venues"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "qr_code_scans" ADD CONSTRAINT "qr_code_scans_qr_code_id_fkey" FOREIGN KEY ("qr_code_id") REFERENCES "qr_codes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -388,16 +444,37 @@ ALTER TABLE "qr_code_scans" ADD CONSTRAINT "qr_code_scans_qr_code_id_fkey" FOREI
 ALTER TABLE "orders" ADD CONSTRAINT "orders_table_id_fkey" FOREIGN KEY ("table_id") REFERENCES "tables"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "order_items" ADD CONSTRAINT "order_items_menu_item_id_fkey" FOREIGN KEY ("menu_item_id") REFERENCES "menu_items"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "order_items" ADD CONSTRAINT "order_items_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "orders"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "order_items" ADD CONSTRAINT "order_items_menu_item_id_fkey" FOREIGN KEY ("menu_item_id") REFERENCES "menu_items"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "order_item_modifiers" ADD CONSTRAINT "order_item_modifiers_modifier_id_fkey" FOREIGN KEY ("modifier_id") REFERENCES "modifiers"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "order_item_modifiers" ADD CONSTRAINT "order_item_modifiers_order_item_id_fkey" FOREIGN KEY ("order_item_id") REFERENCES "order_items"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "order_item_modifiers" ADD CONSTRAINT "order_item_modifiers_modifier_id_fkey" FOREIGN KEY ("modifier_id") REFERENCES "modifiers"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "payments" ADD CONSTRAINT "payments_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "orders"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "payments" ADD CONSTRAINT "payments_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "orders"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "payments" ADD CONSTRAINT "payments_subscription_id_fkey" FOREIGN KEY ("subscription_id") REFERENCES "subscriptions"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "payments" ADD CONSTRAINT "payments_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "payments" ADD CONSTRAINT "payments_venue_id_fkey" FOREIGN KEY ("venue_id") REFERENCES "venues"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "payments" ADD CONSTRAINT "payments_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_plan_id_fkey" FOREIGN KEY ("plan_id") REFERENCES "plans"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
