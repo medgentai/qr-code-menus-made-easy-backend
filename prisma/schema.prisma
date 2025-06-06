@@ -446,7 +446,6 @@ enum MemberRole {
 enum StaffType {
   KITCHEN
   FRONT_OF_HOUSE
-  GENERAL
 }
 
 enum TableStatus {

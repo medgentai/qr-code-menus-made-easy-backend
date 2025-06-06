@@ -30,7 +30,7 @@ export class OrganizationMemberEntity implements Partial<OrganizationMember> {
   @ApiProperty({
     description: 'The staff type (only applicable for STAFF role)',
     example: 'KITCHEN',
-    enum: ['KITCHEN', 'FRONT_OF_HOUSE', 'GENERAL'],
+    enum: ['KITCHEN', 'FRONT_OF_HOUSE'],
     required: false,
   })
   staffType?: StaffType;

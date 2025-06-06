@@ -26,11 +26,11 @@ export class CreateInvitationDto {
   @ApiProperty({
     description: 'The staff type (only applicable for STAFF role)',
     example: 'KITCHEN',
-    enum: ['KITCHEN', 'FRONT_OF_HOUSE', 'GENERAL'],
+    enum: ['KITCHEN', 'FRONT_OF_HOUSE'],
     required: false,
   })
   @IsEnum(StaffType, {
-    message: 'Staff type must be one of: KITCHEN, FRONT_OF_HOUSE, GENERAL',
+    message: 'Staff type must be one of: KITCHEN, FRONT_OF_HOUSE',
   })
   @IsOptional()
   staffType?: StaffType;
