@@ -137,7 +137,17 @@ export class PublicService {
       // Record the scan
       await this.recordScanByQrCodeData(`https://menu.scanserve.com/${slug}?table=${tableId}`);
 
-      return table.qrCode.menu;
+      // Include table information in the menu response
+      const menuWithTable = {
+        ...table.qrCode.menu,
+        table: {
+          id: table.id,
+          name: table.name,
+          capacity: table.capacity,
+        },
+      };
+
+      return menuWithTable;
     }
 
     // If venueId is provided, find the QR code for that venue

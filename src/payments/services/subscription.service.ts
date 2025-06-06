@@ -204,7 +204,7 @@ export class SubscriptionService {
         where: {
           organizationId: dto.organizationId,
           userId: dto.userId,
-          role: { in: ['OWNER', 'ADMIN'] },
+          role: { in: ['OWNER', 'ADMINISTRATOR'] },
         },
       });
 

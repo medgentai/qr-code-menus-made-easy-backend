@@ -65,6 +65,16 @@ export class CreatePublicOrderDto {
   roomNumber?: string;
 
   @ApiPropertyOptional({
+    description: 'The number of people in the party',
+    example: 4,
+    minimum: 1,
+  })
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  partySize?: number;
+
+  @ApiPropertyOptional({
     description: 'Notes for the order',
     example: 'Please deliver to Room 101',
   })

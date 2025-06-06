@@ -8,6 +8,7 @@ import {
   IsArray,
   ValidateNested,
   IsNumber,
+  IsInt,
   Min,
   IsEnum,
 } from 'class-validator';
@@ -109,6 +110,16 @@ export class CreateOrderDto {
   @IsString()
   @IsOptional()
   roomNumber?: string;
+
+  @ApiPropertyOptional({
+    description: 'The number of people in the party',
+    example: 4,
+    minimum: 1,
+  })
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  partySize?: number;
 
   @ApiPropertyOptional({
     description: 'Notes for the order',

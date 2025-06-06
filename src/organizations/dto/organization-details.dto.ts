@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { OrganizationType, MemberRole } from '@prisma/client';
+import { OrganizationType, MemberRole, StaffType, InvitationStatus } from '@prisma/client';
 
 // Basic user information DTO
 export class UserBasicInfoDto {
@@ -39,10 +39,26 @@ export class OrganizationMemberWithUserDto {
 
   @ApiProperty({
     description: 'The role of the member in the organization',
-    example: 'ADMIN',
-    enum: ['OWNER', 'ADMIN', 'MEMBER'],
+    example: 'STAFF',
+    enum: ['OWNER', 'ADMINISTRATOR', 'MANAGER', 'STAFF'],
   })
   role: MemberRole;
+
+  @ApiProperty({
+    description: 'The staff type (only applicable for STAFF role)',
+    example: 'KITCHEN',
+    enum: ['KITCHEN', 'FRONT_OF_HOUSE', 'GENERAL'],
+    required: false,
+  })
+  staffType?: StaffType;
+
+  @ApiProperty({
+    description: 'Array of venue IDs the member is assigned to',
+    example: ['venue-id-1', 'venue-id-2'],
+    type: [String],
+    required: false,
+  })
+  venueIds?: string[];
 
   @ApiProperty({
     description: 'When the member was added to the organization',
@@ -61,6 +77,69 @@ export class OrganizationMemberWithUserDto {
     type: UserBasicInfoDto,
   })
   user: UserBasicInfoDto;
+}
+
+// Organization invitation information
+export class OrganizationInvitationWithInviterDto {
+  @ApiProperty({
+    description: 'The unique identifier of the invitation',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  id: string;
+
+  @ApiProperty({
+    description: 'The email address of the invited user',
+    example: 'user@example.com',
+  })
+  email: string;
+
+  @ApiProperty({
+    description: 'The role assigned to the invited member',
+    example: 'STAFF',
+    enum: ['ADMINISTRATOR', 'MANAGER', 'STAFF'],
+  })
+  role: MemberRole;
+
+  @ApiProperty({
+    description: 'The staff type (only applicable for STAFF role)',
+    example: 'KITCHEN',
+    enum: ['KITCHEN', 'FRONT_OF_HOUSE', 'GENERAL'],
+    required: false,
+  })
+  staffType?: StaffType;
+
+  @ApiProperty({
+    description: 'Array of venue IDs the member is assigned to',
+    example: ['venue-id-1', 'venue-id-2'],
+    type: [String],
+    required: false,
+  })
+  venueIds?: string[];
+
+  @ApiProperty({
+    description: 'The status of the invitation',
+    example: 'PENDING',
+    enum: ['PENDING', 'ACCEPTED', 'EXPIRED', 'CANCELLED'],
+  })
+  status: InvitationStatus;
+
+  @ApiProperty({
+    description: 'The expiration date of the invitation',
+    example: '2023-12-31T23:59:59Z',
+  })
+  expiresAt: Date;
+
+  @ApiProperty({
+    description: 'When the invitation was created',
+    example: '2023-01-01T00:00:00Z',
+  })
+  createdAt: Date;
+
+  @ApiProperty({
+    description: 'Basic information about the user who sent the invitation',
+    type: UserBasicInfoDto,
+  })
+  inviter: UserBasicInfoDto;
 }
 
 // Subscription information
@@ -208,6 +287,13 @@ export class OrganizationDetailsDto {
     type: [OrganizationMemberWithUserDto],
   })
   members: OrganizationMemberWithUserDto[];
+
+  @ApiProperty({
+    description: 'Pending invitations for the organization (only visible to admins/owners)',
+    type: [OrganizationInvitationWithInviterDto],
+    required: false,
+  })
+  invitations?: OrganizationInvitationWithInviterDto[];
 
   @ApiProperty({
     description: 'Statistics about the organization',

@@ -18,13 +18,16 @@ import {
   ApiTags
 } from '@nestjs/swagger';
 import { OrganizationsService } from './organizations.service';
+import { InvitationsService } from './invitations.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { AddMemberDto } from './dto/add-member.dto';
 import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
+import { CreateInvitationDto } from './dto/create-invitation.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OrganizationEntity } from './entities/organization.entity';
 import { OrganizationMemberEntity } from './entities/organization-member.entity';
+import { OrganizationInvitationEntity } from './entities/organization-invitation.entity';
 import { OrganizationDetailsDto } from './dto/organization-details.dto';
 
 interface RequestWithUser extends Request {
@@ -42,7 +45,10 @@ interface RequestWithUser extends Request {
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth('JWT-auth')
 export class OrganizationsController {
-  constructor(private readonly organizationsService: OrganizationsService) {}
+  constructor(
+    private readonly organizationsService: OrganizationsService,
+    private readonly invitationsService: InvitationsService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new organization' })
@@ -293,5 +299,82 @@ export class OrganizationsController {
   })
   getOrganizationDetails(@Param('id') id: string, @Req() req: RequestWithUser) {
     return this.organizationsService.getOrganizationDetails(id, req.user.id);
+  }
+
+  // Invitation endpoints
+  @Post(':id/invitations')
+  @ApiOperation({ summary: 'Send an invitation to join an organization' })
+  @ApiParam({ name: 'id', description: 'Organization ID' })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'The invitation has been successfully sent.',
+    type: OrganizationInvitationEntity
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Bad Request.'
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Organization not found.'
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'You do not have permission to invite members to this organization.'
+  })
+  @ApiResponse({
+    status: HttpStatus.CONFLICT,
+    description: 'User is already a member or has a pending invitation.'
+  })
+  sendInvitation(
+    @Param('id') id: string,
+    @Body() createInvitationDto: CreateInvitationDto,
+    @Req() req: RequestWithUser
+  ) {
+    return this.invitationsService.createInvitation(id, createInvitationDto, req.user.id);
+  }
+
+  @Get(':id/invitations')
+  @ApiOperation({ summary: 'Get all invitations for an organization' })
+  @ApiParam({ name: 'id', description: 'Organization ID' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Return all invitations for the organization.',
+    type: [OrganizationInvitationEntity]
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Organization not found.'
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'You do not have permission to view invitations for this organization.'
+  })
+  getInvitations(@Param('id') id: string, @Req() req: RequestWithUser) {
+    return this.invitationsService.getInvitations(id, req.user.id);
+  }
+
+  @Delete(':id/invitations/:invitationId')
+  @ApiOperation({ summary: 'Cancel an invitation' })
+  @ApiParam({ name: 'id', description: 'Organization ID' })
+  @ApiParam({ name: 'invitationId', description: 'Invitation ID' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'The invitation has been successfully cancelled.'
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Organization or invitation not found.'
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'You do not have permission to cancel invitations.'
+  })
+  cancelInvitation(
+    @Param('id') id: string,
+    @Param('invitationId') invitationId: string,
+    @Req() req: RequestWithUser
+  ) {
+    return this.invitationsService.cancelInvitation(id, invitationId, req.user.id);
   }
 }

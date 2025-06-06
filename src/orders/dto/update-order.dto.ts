@@ -7,10 +7,39 @@ import {
   IsEnum,
   IsArray,
   ValidateNested,
+  IsInt,
+  Min,
+  IsNumber,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { OrderStatus } from '@prisma/client';
 import { CreateOrderItemDto } from './create-order.dto';
+
+export class UpdateOrderItemQuantityDto {
+  @ApiPropertyOptional({
+    description: 'The order item ID to update',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  @IsUUID(4, { message: 'Order item ID must be a valid UUID' })
+  itemId: string;
+
+  @ApiPropertyOptional({
+    description: 'The new quantity for the item',
+    example: 3,
+    minimum: 1,
+  })
+  @IsNumber()
+  @Min(1, { message: 'Quantity must be at least 1' })
+  quantity: number;
+
+  @ApiPropertyOptional({
+    description: 'Updated notes for the item',
+    example: 'Extra spicy',
+  })
+  @IsString()
+  @IsOptional()
+  notes?: string;
+}
 
 export class UpdateOrderDto {
   @ApiPropertyOptional({
@@ -54,6 +83,16 @@ export class UpdateOrderDto {
   roomNumber?: string;
 
   @ApiPropertyOptional({
+    description: 'The number of people in the party',
+    example: 4,
+    minimum: 1,
+  })
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  partySize?: number;
+
+  @ApiPropertyOptional({
     description: 'Notes for the order',
     example: 'Please deliver to Room 101',
   })
@@ -87,4 +126,14 @@ export class UpdateOrderDto {
   @IsUUID(4, { each: true })
   @IsOptional()
   removeItemIds?: string[];
+
+  @ApiPropertyOptional({
+    description: 'The order items to update (quantity/notes)',
+    type: [UpdateOrderItemQuantityDto],
+  })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpdateOrderItemQuantityDto)
+  @IsOptional()
+  updateItems?: UpdateOrderItemQuantityDto[];
 }

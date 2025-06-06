@@ -1,18 +1,27 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { IsEmail, IsNotEmpty, IsEnum, IsOptional, IsArray, IsString } from 'class-validator';
 import { MemberRole, StaffType } from '@prisma/client';
-import { IsEnum, IsNotEmpty, IsOptional, IsArray, IsString } from 'class-validator';
 
-export class UpdateMemberRoleDto {
+export class CreateInvitationDto {
   @ApiProperty({
-    description: 'The new role of the member',
+    description: 'The email of the user to invite',
+    example: 'user@example.com',
+  })
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+
+  @ApiProperty({
+    description: 'The role of the invited member',
     example: 'STAFF',
     enum: ['ADMINISTRATOR', 'MANAGER', 'STAFF'],
+    default: 'STAFF',
   })
   @IsEnum(MemberRole, {
     message: 'Role must be one of: ADMINISTRATOR, MANAGER, STAFF',
   })
-  @IsNotEmpty()
-  role: MemberRole;
+  @IsOptional()
+  role?: MemberRole = 'STAFF';
 
   @ApiProperty({
     description: 'The staff type (only applicable for STAFF role)',

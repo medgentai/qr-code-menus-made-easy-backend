@@ -70,7 +70,7 @@ export class EmailService {
   async sendPasswordResetEmail(email: string, resetToken: string, name: string): Promise<boolean> {
     try {
       const resetUrl = `${this.configService.get<string>('FRONTEND_URL', 'https://scanserve.com')}/reset-password?token=${resetToken}`;
-      
+
       const { data, error } = await this.resend.emails.send({
         from: this.fromEmail,
         to: email,
@@ -87,6 +87,33 @@ export class EmailService {
       return true;
     } catch (error) {
       this.logger.error(`Error sending password reset email: ${error.message}`, error.stack);
+      return false;
+    }
+  }
+
+  /**
+   * Send an organization invitation email
+   */
+  async sendInvitationEmail(email: string, inviterName: string, organizationName: string, token: string): Promise<boolean> {
+    try {
+      const invitationUrl = `${this.configService.get<string>('FRONTEND_URL', 'https://scanserve.com')}/invitation?token=${token}`;
+
+      const { data, error } = await this.resend.emails.send({
+        from: this.fromEmail,
+        to: email,
+        subject: `You're invited to join ${organizationName} on ScanServe`,
+        html: this.getInvitationEmailTemplate(inviterName, organizationName, invitationUrl),
+      });
+
+      if (error) {
+        this.logger.error(`Failed to send invitation email: ${error.message}`);
+        return false;
+      }
+
+      this.logger.log(`Invitation email sent to ${email} with ID: ${data?.id}`);
+      return true;
+    } catch (error) {
+      this.logger.error(`Error sending invitation email: ${error.message}`, error.stack);
       return false;
     }
   }
@@ -161,6 +188,34 @@ export class EmailService {
           </div>
           <p style="color: #334155; margin-bottom: 20px;">This link will expire in 1 hour.</p>
           <p style="color: #334155; margin-bottom: 0;">If you didn't request a password reset, you can safely ignore this email.</p>
+        </div>
+        <div style="text-align: center; color: #64748b; font-size: 12px;">
+          <p>&copy; ${new Date().getFullYear()} ScanServe. All rights reserved.</p>
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Organization invitation email template
+   */
+  private getInvitationEmailTemplate(inviterName: string, organizationName: string, invitationUrl: string): string {
+    return `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="text-align: center; margin-bottom: 20px;">
+          <h1 style="color: #f97316;">ScanServe</h1>
+        </div>
+        <div style="background-color: #f8fafc; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+          <h2 style="color: #0f172a; margin-top: 0;">You're Invited!</h2>
+          <p style="color: #334155; margin-bottom: 20px;">Hi there,</p>
+          <p style="color: #334155; margin-bottom: 20px;"><strong>${inviterName}</strong> has invited you to join <strong>${organizationName}</strong> on ScanServe.</p>
+          <p style="color: #334155; margin-bottom: 20px;">ScanServe helps restaurants and hospitality businesses create digital menus, manage orders, and provide seamless customer experiences through QR code technology.</p>
+          <p style="color: #334155; margin-bottom: 20px;">Click the button below to accept the invitation and join the team:</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${invitationUrl}" style="background-color: #f97316; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">Accept Invitation</a>
+          </div>
+          <p style="color: #334155; margin-bottom: 20px;">If you don't have a ScanServe account yet, you'll be able to create one during the invitation process.</p>
+          <p style="color: #334155; margin-bottom: 0;">This invitation will expire in 7 days.</p>
         </div>
         <div style="text-align: center; color: #64748b; font-size: 12px;">
           <p>&copy; ${new Date().getFullYear()} ScanServe. All rights reserved.</p>

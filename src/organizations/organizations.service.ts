@@ -223,16 +223,17 @@ export class OrganizationsService {
   }
 
   /**
-   * Add a member to an organization
+   * Add a member to an organization (deprecated - use invitations instead)
+   * This method is kept for backward compatibility but should use the invitation system
    */
   async addMember(organizationId: string, addMemberDto: AddMemberDto, currentUserId: string): Promise<OrganizationMember> {
-    const { email, role = 'MEMBER' } = addMemberDto;
+    const { email, role = 'STAFF', staffType, venueIds = [] } = addMemberDto;
 
     // Check if organization exists
     await this.findOne(organizationId);
 
     // Check if current user is an admin or owner
-    const hasPermission = await this.hasRole(organizationId, currentUserId, ['OWNER', 'ADMIN']);
+    const hasPermission = await this.hasRole(organizationId, currentUserId, ['OWNER', 'ADMINISTRATOR']);
     if (!hasPermission) {
       throw new ForbiddenException('You do not have permission to add members to this organization');
     }
@@ -243,7 +244,7 @@ export class OrganizationsService {
     });
 
     if (!user) {
-      throw new NotFoundException(`User with email '${email}' not found`);
+      throw new NotFoundException(`User with email '${email}' not found. Please send an invitation instead.`);
     }
 
     // Check if user is already a member
@@ -266,6 +267,8 @@ export class OrganizationsService {
         organizationId,
         userId: user.id,
         role,
+        staffType: role === 'STAFF' ? staffType : null,
+        venueIds: role === 'STAFF' ? venueIds : [],
       },
       include: {
         user: {
@@ -289,13 +292,13 @@ export class OrganizationsService {
     updateMemberRoleDto: UpdateMemberRoleDto,
     currentUserId: string
   ): Promise<OrganizationMember> {
-    const { role } = updateMemberRoleDto;
+    const { role, staffType, venueIds = [] } = updateMemberRoleDto;
 
     // Check if organization exists
     await this.findOne(organizationId);
 
     // Check if current user is an admin or owner
-    const hasPermission = await this.hasRole(organizationId, currentUserId, ['OWNER', 'ADMIN']);
+    const hasPermission = await this.hasRole(organizationId, currentUserId, ['OWNER', 'ADMINISTRATOR']);
     if (!hasPermission) {
       throw new ForbiddenException('You do not have permission to update member roles in this organization');
     }
@@ -325,10 +328,14 @@ export class OrganizationsService {
       throw new ForbiddenException('Cannot update your own role');
     }
 
-    // Update the member's role
+    // Update the member's role and related fields
     return this.prisma.organizationMember.update({
       where: { id: memberId },
-      data: { role },
+      data: {
+        role,
+        staffType: role === 'STAFF' ? staffType : null,
+        venueIds: role === 'STAFF' ? venueIds : [],
+      },
       include: {
         user: {
           select: {
@@ -350,7 +357,7 @@ export class OrganizationsService {
     await this.findOne(organizationId);
 
     // Check if current user is an admin or owner
-    const hasPermission = await this.hasRole(organizationId, currentUserId, ['OWNER', 'ADMIN']);
+    const hasPermission = await this.hasRole(organizationId, currentUserId, ['OWNER', 'ADMINISTRATOR']);
     if (!hasPermission) {
       throw new ForbiddenException('You do not have permission to remove members from this organization');
     }
@@ -459,6 +466,33 @@ export class OrganizationsService {
       },
     });
 
+    // Get pending invitations (only for admins/owners)
+    const currentUserMember = await this.prisma.organizationMember.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: id,
+          userId,
+        },
+      },
+    });
+
+    let invitations: any[] = [];
+    if (currentUserMember && ['OWNER', 'ADMINISTRATOR'].includes(currentUserMember.role)) {
+      invitations = await this.prisma.organizationInvitation.findMany({
+        where: { organizationId: id },
+        include: {
+          inviter: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+
     // Get stats
     const totalMembers = members.length;
 
@@ -504,6 +538,8 @@ export class OrganizationsService {
       members: members.map(member => ({
         id: member.id,
         role: member.role,
+        staffType: member.staffType || undefined,
+        venueIds: member.venueIds || [],
         createdAt: member.createdAt,
         updatedAt: member.updatedAt,
         user: {
@@ -513,6 +549,21 @@ export class OrganizationsService {
           profileImageUrl: member.user.profileImageUrl || undefined,
         },
       })),
+      invitations: invitations.length > 0 ? invitations.map(invitation => ({
+        id: invitation.id,
+        email: invitation.email,
+        role: invitation.role,
+        staffType: invitation.staffType || undefined,
+        venueIds: invitation.venueIds || [],
+        status: invitation.status,
+        expiresAt: invitation.expiresAt,
+        createdAt: invitation.createdAt,
+        inviter: {
+          id: invitation.inviter.id,
+          name: invitation.inviter.name,
+          email: invitation.inviter.email,
+        },
+      })) : undefined,
       stats: {
         totalMembers,
         totalVenues,

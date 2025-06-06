@@ -8,7 +8,10 @@ CREATE TYPE "UserStatus" AS ENUM ('ACTIVE', 'INACTIVE', 'SUSPENDED');
 CREATE TYPE "OrganizationType" AS ENUM ('RESTAURANT', 'HOTEL', 'CAFE', 'FOOD_TRUCK', 'BAR', 'OTHER');
 
 -- CreateEnum
-CREATE TYPE "MemberRole" AS ENUM ('OWNER', 'ADMIN', 'MANAGER', 'STAFF', 'MEMBER');
+CREATE TYPE "MemberRole" AS ENUM ('OWNER', 'ADMINISTRATOR', 'MANAGER', 'STAFF');
+
+-- CreateEnum
+CREATE TYPE "StaffType" AS ENUM ('KITCHEN', 'FRONT_OF_HOUSE', 'GENERAL');
 
 -- CreateEnum
 CREATE TYPE "TableStatus" AS ENUM ('AVAILABLE', 'OCCUPIED', 'RESERVED', 'MAINTENANCE');
@@ -33,6 +36,9 @@ CREATE TYPE "SubscriptionStatus" AS ENUM ('ACTIVE', 'INACTIVE', 'CANCELLED', 'EX
 
 -- CreateEnum
 CREATE TYPE "BillingCycle" AS ENUM ('MONTHLY', 'ANNUAL');
+
+-- CreateEnum
+CREATE TYPE "InvitationStatus" AS ENUM ('PENDING', 'ACCEPTED', 'EXPIRED', 'CANCELLED');
 
 -- CreateTable
 CREATE TABLE "users" (
@@ -99,11 +105,32 @@ CREATE TABLE "organization_members" (
     "id" TEXT NOT NULL,
     "organization_id" TEXT NOT NULL,
     "user_id" TEXT NOT NULL,
-    "role" "MemberRole" NOT NULL DEFAULT 'MEMBER',
+    "role" "MemberRole" NOT NULL DEFAULT 'STAFF',
+    "staff_type" "StaffType",
+    "venue_ids" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "organization_members_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "organization_invitations" (
+    "id" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "organization_id" TEXT NOT NULL,
+    "invited_by" TEXT NOT NULL,
+    "role" "MemberRole" NOT NULL DEFAULT 'STAFF',
+    "staff_type" "StaffType",
+    "venue_ids" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "status" "InvitationStatus" NOT NULL DEFAULT 'PENDING',
+    "token" TEXT NOT NULL,
+    "expires_at" TIMESTAMP(3) NOT NULL,
+    "accepted_at" TIMESTAMP(3),
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "organization_invitations_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -270,6 +297,7 @@ CREATE TABLE "orders" (
     "customer_email" TEXT,
     "customer_phone" TEXT,
     "room_number" TEXT,
+    "party_size" INTEGER,
     "status" "OrderStatus" NOT NULL DEFAULT 'PENDING',
     "total_amount" DECIMAL(10,2) NOT NULL DEFAULT 0,
     "notes" TEXT,
@@ -387,6 +415,12 @@ CREATE UNIQUE INDEX "organizations_slug_key" ON "organizations"("slug");
 CREATE UNIQUE INDEX "organization_members_organization_id_user_id_key" ON "organization_members"("organization_id", "user_id");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "organization_invitations_token_key" ON "organization_invitations"("token");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "organization_invitations_organization_id_email_key" ON "organization_invitations"("organization_id", "email");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "qr_codes_table_id_key" ON "qr_codes"("table_id");
 
 -- AddForeignKey
@@ -403,6 +437,12 @@ ALTER TABLE "organization_members" ADD CONSTRAINT "organization_members_organiza
 
 -- AddForeignKey
 ALTER TABLE "organization_members" ADD CONSTRAINT "organization_members_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "organization_invitations" ADD CONSTRAINT "organization_invitations_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "organization_invitations" ADD CONSTRAINT "organization_invitations_invited_by_fkey" FOREIGN KEY ("invited_by") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "venues" ADD CONSTRAINT "venues_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -10,7 +10,7 @@ import { VenuesService } from '../venues/venues.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
-import { UpdateOrderDto } from './dto/update-order.dto';
+import { UpdateOrderDto, UpdateOrderItemQuantityDto } from './dto/update-order.dto';
 import { UpdateOrderItemDto } from './dto/update-order-item.dto';
 import { FilterOrdersDto } from './dto/filter-orders.dto';
 import { OrderStatus, OrderItemStatus, Prisma } from '@prisma/client';
@@ -88,6 +88,7 @@ export class OrdersService {
         customerEmail: createOrderDto.customerEmail,
         customerPhone: createOrderDto.customerPhone,
         roomNumber: createOrderDto.roomNumber,
+        partySize: createOrderDto.partySize,
         status: createOrderDto.status || OrderStatus.PENDING,
         totalAmount,
         notes: createOrderDto.notes,
@@ -362,79 +363,84 @@ export class OrdersService {
    * Find orders for an organization with pagination
    */
   async findAllForOrganization(organizationId: string, userId: string, page = 1, limit = 10, status?: OrderStatus) {
-    // Check if user is a member of the organization
-    const isMember = await this.organizationsService.isMember(
-      organizationId,
-      userId,
-    );
+    // Check if user is a member of the organization and get member details
+    const member = await this.prisma.organizationMember.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: organizationId,
+          userId: userId
+        }
+      }
+    });
 
-    if (!isMember) {
+    if (!member) {
       throw new ForbiddenException('You are not a member of this organization');
     }
-
-    // Get all venues for the organization
-    const venues = await this.prisma.venue.findMany({
-      where: { organizationId },
-      select: { id: true },
-    });
-
-    // Get all tables for the venues
-    const tables = await this.prisma.table.findMany({
-      where: {
-        venueId: {
-          in: venues.map((venue) => venue.id),
-        },
-      },
-      select: { id: true },
-    });
 
     // Calculate pagination parameters
     const skip = (page - 1) * limit;
 
-    // Define where clause
-    const where: Prisma.OrderWhereInput = {
-      tableId: {
-        in: tables.map((table) => table.id),
-      },
-    };
+    // Build optimized where clause based on role - avoid intermediate table queries
+    let where: Prisma.OrderWhereInput;
+
+    if (member.role === 'STAFF' && member.venueIds && member.venueIds.length > 0) {
+      // Staff members: Direct venue filtering (more efficient)
+      where = {
+        table: {
+          venueId: {
+            in: member.venueIds,
+          },
+        },
+      };
+    } else {
+      // Managers, Administrators, and Owners: Organization-level filtering
+      where = {
+        table: {
+          venue: {
+            organizationId,
+          },
+        },
+      };
+    }
 
     // Add status filter if provided
     if (status) {
       where.status = status;
     }
 
-    // Get total count for pagination
-    const total = await this.prisma.order.count({ where });
-    const totalPages = Math.ceil(total / limit);
-    const hasNextPage = page < totalPages;
-    const hasPreviousPage = page > 1;
-
-    // Get paginated orders for the tables
-    const orders = await this.prisma.order.findMany({
-      where,
-      include: {
-        table: {
-          include: {
-            venue: true,
+    // Get total count and orders in parallel for better performance
+    const [total, orders] = await Promise.all([
+      this.prisma.order.count({ where }),
+      this.prisma.order.findMany({
+        where,
+        include: {
+          table: {
+            include: {
+              venue: true,
+            },
           },
-        },
-        items: {
-          include: {
-            menuItem: true,
-            modifiers: {
-              include: {
-                modifier: true,
+          items: {
+            include: {
+              menuItem: true,
+              modifiers: {
+                include: {
+                  modifier: true,
+                },
               },
             },
           },
         },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      skip,
-      take: limit,
-    });
+        orderBy: {
+          createdAt: 'desc',
+        },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+    const hasNextPage = page < totalPages;
+    const hasPreviousPage = page > 1;
 
     // Return paginated response
     return {
@@ -458,36 +464,55 @@ export class OrdersService {
 
     // Handle organization filter
     if (filterDto.organizationId) {
-      // Check if user is a member of the organization
-      const isMember = await this.organizationsService.isMember(
-        filterDto.organizationId,
-        userId
-      );
+      // Check if user is a member of the organization and get member details
+      const member = await this.prisma.organizationMember.findUnique({
+        where: {
+          organizationId_userId: {
+            organizationId: filterDto.organizationId,
+            userId: userId
+          }
+        }
+      });
 
-      if (!isMember) {
+      if (!member) {
         throw new ForbiddenException('You are not a member of this organization');
       }
 
-      // Get all venues for the organization
-      const venues = await this.prisma.venue.findMany({
-        where: { organizationId: filterDto.organizationId },
-        select: { id: true },
-      });
+      // Build optimized where clause based on role - avoid intermediate queries
+      if (member.role === 'STAFF' && member.venueIds && member.venueIds.length > 0) {
+        // Staff members: Direct venue filtering
+        const venueIds = filterDto.venueId
+          ? member.venueIds.filter(id => id === filterDto.venueId)
+          : member.venueIds;
 
-      // If venue filter is also provided, filter to just that venue
-      const venueIds = filterDto.venueId
-        ? venues.filter(v => v.id === filterDto.venueId).map(v => v.id)
-        : venues.map(v => v.id);
-
-      // Get all tables for these venues
-      const tables = await this.prisma.table.findMany({
-        where: { venueId: { in: venueIds } },
-        select: { id: true },
-      });
-
-      where.tableId = {
-        in: tables.map(table => table.id),
-      };
+        if (venueIds.length === 0) {
+          where.id = 'non-existent-id'; // This will return no results
+        } else {
+          where.table = {
+            venueId: {
+              in: venueIds,
+            },
+          };
+        }
+      } else {
+        // Managers, Administrators, and Owners: Organization-level filtering
+        if (filterDto.venueId) {
+          // Filter to specific venue within organization
+          where.table = {
+            venueId: filterDto.venueId,
+            venue: {
+              organizationId: filterDto.organizationId,
+            },
+          };
+        } else {
+          // All venues in organization
+          where.table = {
+            venue: {
+              organizationId: filterDto.organizationId,
+            },
+          };
+        }
+      }
     }
     // Handle venue filter without organization filter
     else if (filterDto.venueId) {
@@ -573,38 +598,39 @@ export class OrdersService {
     const limit = filterDto.limit || 10;
     const skip = (page - 1) * limit;
 
-    // Get total count for pagination
-    const total = await this.prisma.order.count({ where });
-    const totalPages = Math.ceil(total / limit);
-    const hasNextPage = page < totalPages;
-    const hasPreviousPage = page > 1;
-
-    // Get paginated orders that match the criteria
-    const orders = await this.prisma.order.findMany({
-      where,
-      include: {
-        table: {
-          include: {
-            venue: true,
+    // Get total count and orders in parallel for better performance
+    const [total, orders] = await Promise.all([
+      this.prisma.order.count({ where }),
+      this.prisma.order.findMany({
+        where,
+        include: {
+          table: {
+            include: {
+              venue: true,
+            },
           },
-        },
-        items: {
-          include: {
-            menuItem: true,
-            modifiers: {
-              include: {
-                modifier: true,
+          items: {
+            include: {
+              menuItem: true,
+              modifiers: {
+                include: {
+                  modifier: true,
+                },
               },
             },
           },
         },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      skip,
-      take: limit,
-    });
+        orderBy: {
+          createdAt: 'desc',
+        },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+    const hasNextPage = page < totalPages;
+    const hasPreviousPage = page > 1;
 
     // Return paginated response
     return {
@@ -731,6 +757,66 @@ export class OrdersService {
       updateData.totalAmount = {
         increment: totalAmount,
       };
+    }
+
+    // Handle updating existing items (quantity/notes)
+    if (updateOrderDto.updateItems && updateOrderDto.updateItems.length > 0) {
+      for (const updateItem of updateOrderDto.updateItems) {
+        // Check if item exists and belongs to the order
+        const existingItem = await this.prisma.orderItem.findUnique({
+          where: { id: updateItem.itemId },
+        });
+
+        if (!existingItem || existingItem.orderId !== id) {
+          throw new BadRequestException(
+            `Order item with ID ${updateItem.itemId} not found or does not belong to the order`,
+          );
+        }
+
+        // Prepare update data
+        const itemUpdateData: Prisma.OrderItemUpdateInput = {};
+        let totalAmountChange = 0;
+
+        // Update quantity if provided
+        if (updateItem.quantity !== undefined) {
+          const newQuantity = updateItem.quantity;
+          const unitPrice = Number(existingItem.unitPrice);
+
+          // Calculate new total price for the item
+          const oldTotalPrice = Number(existingItem.totalPrice);
+          const newTotalPrice = unitPrice * newQuantity;
+
+          // Update item data
+          itemUpdateData.quantity = newQuantity;
+          itemUpdateData.totalPrice = newTotalPrice;
+
+          // Track total amount change
+          totalAmountChange += newTotalPrice - oldTotalPrice;
+        }
+
+        // Update notes if provided
+        if (updateItem.notes !== undefined) {
+          itemUpdateData.notes = updateItem.notes;
+        }
+
+        // Update the item
+        await this.prisma.orderItem.update({
+          where: { id: updateItem.itemId },
+          data: itemUpdateData,
+        });
+
+        // Update order total amount if quantity changed
+        if (totalAmountChange !== 0) {
+          await this.prisma.order.update({
+            where: { id },
+            data: {
+              totalAmount: {
+                increment: totalAmountChange,
+              },
+            },
+          });
+        }
+      }
     }
 
     // Handle removing items

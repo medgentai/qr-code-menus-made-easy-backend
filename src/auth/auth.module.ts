@@ -39,7 +39,8 @@ import { SessionCleanupTask } from './tasks/session-cleanup.task';
     AuthService,
     JwtStrategy,
     PassportModule,
-    TokenService
+    TokenService,
+    EmailService
   ],
 })
 export class AuthModule {}

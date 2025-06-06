@@ -39,6 +39,12 @@ export class OrderEntity {
   })
   roomNumber: string | null;
 
+  @ApiPropertyOptional({
+    description: 'The number of people in the party',
+    example: 4,
+  })
+  partySize: number | null;
+
   @ApiProperty({
     description: 'The order status',
     enum: OrderStatus,
