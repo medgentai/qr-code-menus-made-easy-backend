@@ -79,9 +79,7 @@ async function main() {
         venuesIncluded: 1,
         isActive: true,
       }
-    });
-
-    const hotelPlan = await prisma.plan.upsert({
+    });    const hotelPlan = await prisma.plan.upsert({
       where: { id: 'hotel-plan' },
       update: {
         monthlyPrice: 1699.00,
@@ -105,6 +103,89 @@ async function main() {
           'Multi-language support'
         ],
         venuesIncluded: 3,
+        isActive: true,
+      }
+    });
+
+    const cafePlan = await prisma.plan.upsert({
+      where: { id: 'cafe-plan' },
+      update: {
+        monthlyPrice: 799.00,
+        annualPrice: 7188.00,
+      },
+      create: {
+        id: 'cafe-plan',
+        name: 'Cafe',
+        description: 'Perfect for cafes looking to modernize their menu experience.',
+        organizationType: OrganizationType.CAFE,
+        monthlyPrice: 799.00,
+        annualPrice: 7188.00,
+        features: [
+          'Unlimited QR code menus',
+          'Menu customization',
+          'Real-time menu updates',
+          'Mobile-friendly design',
+          'Basic analytics',
+          'Email support',
+          'Easy category management',
+          'Special dish highlights'
+        ],
+        venuesIncluded: 1,
+        isActive: true,
+      }
+    });
+
+    const barPlan = await prisma.plan.upsert({
+      where: { id: 'bar-plan' },
+      update: {
+        monthlyPrice: 799.00,
+        annualPrice: 7188.00,
+      },
+      create: {
+        id: 'bar-plan',
+        name: 'Bar',
+        description: 'Perfect for bars looking to modernize their menu experience.',
+        organizationType: OrganizationType.BAR,
+        monthlyPrice: 799.00,
+        annualPrice: 7188.00,
+        features: [
+          'Unlimited QR code menus',
+          'Menu customization',
+          'Real-time menu updates',
+          'Mobile-friendly design',
+          'Basic analytics',
+          'Email support',
+          'Easy category management',
+          'Special drink highlights'
+        ],
+        venuesIncluded: 1,
+        isActive: true,
+      }
+    });
+
+    const foodTruckPlan = await prisma.plan.upsert({
+      where: { id: 'food-truck-plan' },
+      update: {
+        monthlyPrice: 399.00,
+        annualPrice: 3588.00, // 299 * 12 = 3588
+      },
+      create: {
+        id: 'food-truck-plan',
+        name: 'Food Truck',
+        description: 'Affordable solution for food trucks on the move.',
+        organizationType: OrganizationType.FOOD_TRUCK,
+        monthlyPrice: 399.00,
+        annualPrice: 3588.00, // 299 * 12 = 3588
+        features: [
+          'QR code menu',
+          'Mobile-first design',
+          'Basic menu customization',
+          'Real-time updates',
+          'Location-based features',
+          'Basic analytics',
+          'Email support'
+        ],
+        venuesIncluded: 1,
         isActive: true,
       }
     });

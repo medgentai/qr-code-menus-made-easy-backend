@@ -23,6 +23,7 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "prisma:seed": "ts-node prisma/seed.ts",
+    "prisma:seed:plans": "ts-node prisma/seeds/plans-master.ts",
     "db:reset": "prisma migrate reset --force"
   },
   "dependencies": {

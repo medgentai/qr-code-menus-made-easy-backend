@@ -433,7 +433,6 @@ enum OrganizationType {
   CAFE
   FOOD_TRUCK
   BAR
-  OTHER
 }
 
 enum MemberRole {

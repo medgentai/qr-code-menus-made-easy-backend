@@ -73,7 +73,7 @@ export class CreateOrganizationDto {
   @ApiProperty({
     description: 'The type of organization',
     example: 'RESTAURANT',
-    enum: ['RESTAURANT', 'HOTEL', 'CAFE', 'FOOD_TRUCK', 'BAR', 'OTHER'],
+    enum: ['RESTAURANT', 'HOTEL', 'CAFE', 'FOOD_TRUCK', 'BAR'],
   })
   @IsEnum(OrganizationType)
   @IsNotEmpty()

@@ -250,11 +250,10 @@ export class OrganizationDetailsDto {
     required: false,
   })
   websiteUrl?: string;
-
   @ApiProperty({
     description: 'The type of organization',
     example: 'RESTAURANT',
-    enum: ['RESTAURANT', 'HOTEL', 'CAFE', 'FOOD_TRUCK', 'BAR', 'OTHER'],
+    enum: ['RESTAURANT', 'HOTEL', 'CAFE', 'FOOD_TRUCK', 'BAR'],
   })
   type: OrganizationType;
 

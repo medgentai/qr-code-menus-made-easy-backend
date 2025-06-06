@@ -44,7 +44,7 @@ export class OrganizationEntity implements Partial<Organization> {
   @ApiProperty({
     description: 'The type of organization',
     example: 'RESTAURANT',
-    enum: ['RESTAURANT', 'HOTEL', 'CAFE', 'FOOD_TRUCK', 'BAR', 'OTHER'],
+    enum: ['RESTAURANT', 'HOTEL', 'CAFE', 'FOOD_TRUCK', 'BAR'],
   })
   type: OrganizationType;
 
