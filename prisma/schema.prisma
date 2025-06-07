@@ -31,6 +31,7 @@ model User {
   sessions           Session[]
   payments           Payment[]
   subscriptions      Subscription[]
+  uploadedMediaFiles MediaFile[]
 
   @@map("users")
 }
@@ -54,23 +55,24 @@ model Session {
 }
 
 model Organization {
-  id            String                   @id @default(uuid())
-  name          String
-  slug          String                   @unique
-  description   String?
-  logoUrl       String?
-  websiteUrl    String?
-  type          OrganizationType
-  ownerId       String                   @map("owner_id")
-  planId        String?                  @map("plan_id")
-  planStartDate DateTime?                @map("plan_start_date")
-  planEndDate   DateTime?                @map("plan_end_date")
-  isActive      Boolean                  @default(true) @map("is_active")
-  createdAt     DateTime                 @default(now()) @map("created_at")
-  updatedAt     DateTime                 @updatedAt @map("updated_at")
-  menus         Menu[]
-  members       OrganizationMember[]
+  id                 String                   @id @default(uuid())
+  name               String
+  slug               String                   @unique
+  description        String?
+  logoUrl            String?
+  websiteUrl         String?
+  type               OrganizationType
+  ownerId            String                   @map("owner_id")
+  planId             String?                  @map("plan_id")
+  planStartDate      DateTime?                @map("plan_start_date")
+  planEndDate        DateTime?                @map("plan_end_date")
+  isActive           Boolean                  @default(true) @map("is_active")
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+  menus              Menu[]
+  members            OrganizationMember[]
   invitations   OrganizationInvitation[]
+  mediaFiles    MediaFile[]
   owner         User                     @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   plan          Plan?                    @relation(fields: [planId], references: [id], onDelete: SetNull)
   venues        Venue[]
@@ -118,25 +120,26 @@ model OrganizationInvitation {
 }
 
 model Venue {
-  id             String       @id @default(uuid())
-  organizationId String       @map("organization_id")
-  name           String
-  description    String?
-  address        String?
-  city           String?
-  state          String?
-  country        String?
-  postalCode     String?      @map("postal_code")
-  phoneNumber    String?      @map("phone_number")
-  email          String?
-  imageUrl       String?      @map("image_url")
-  isActive       Boolean      @default(true) @map("is_active")
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
-  qrCodes        QrCode[]
-  tables         Table[]
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  payments       Payment[]
+  id               String       @id @default(uuid())
+  organizationId   String       @map("organization_id")
+  name             String
+  description      String?
+  address          String?
+  city             String?
+  state            String?
+  country          String?
+  postalCode       String?      @map("postal_code")
+  phoneNumber      String?      @map("phone_number")
+  email            String?
+  imageUrl         String?      @map("image_url")
+  isActive         Boolean      @default(true) @map("is_active")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  qrCodes          QrCode[]
+  tables           Table[]
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payments         Payment[]
+  mediaFiles       MediaFile[]
 
   @@map("venues")
 }
@@ -414,6 +417,26 @@ model Plan {
   subscriptions     Subscription[]
 
   @@map("plans")
+}
+
+model MediaFile {
+  id               String       @id @default(uuid())
+  fileName         String       @map("file_name")
+  originalName     String       @map("original_name")
+  fileSize         Int          @map("file_size")
+  mimeType         String       @map("mime_type")
+  s3Key            String        @map("s3_key")
+  s3Url            String        @map("s3_url")
+  organizationId   String?       @map("organization_id")
+  venueId          String?       @map("venue_id")
+  uploadedBy       String        @map("uploaded_by")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+  organization     Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  venue            Venue?        @relation(fields: [venueId], references: [id], onDelete: SetNull)
+  uploader         User         @relation(fields: [uploadedBy], references: [id], onDelete: Cascade)
+
+  @@map("media_files")
 }
 
 enum UserRole {

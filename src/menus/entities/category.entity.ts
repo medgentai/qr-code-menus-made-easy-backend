@@ -33,6 +33,8 @@ export class CategoryEntity implements Category {
   })
   imageUrl: string | null;
 
+
+
   @ApiProperty({
     description: 'The display order of the category',
     example: 1,

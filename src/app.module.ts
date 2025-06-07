@@ -15,6 +15,7 @@ import { OrdersModule } from './orders/orders.module';
 import { PublicModule } from './public/public.module';
 import { PaymentsModule } from './payments/payments.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { UploadsModule } from './uploads/uploads.module';
 
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
@@ -52,6 +53,7 @@ import { RolesGuard } from './auth/guards/roles.guard';
     PublicModule,
     PaymentsModule,
     SubscriptionsModule,
+    UploadsModule,
   ],
   controllers: [AppController],
   providers: [

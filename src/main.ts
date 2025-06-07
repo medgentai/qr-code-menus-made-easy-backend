@@ -7,6 +7,7 @@ import helmet from '@fastify/helmet';
 import { AppLoggerService } from './common/services/logger.service';
 import { PrismaService } from './prisma/prisma.service';
 import fastifyCookie from '@fastify/cookie';
+import fastifyMultipart from '@fastify/multipart';
 
 async function bootstrap() {
   // Create custom logger
@@ -100,6 +101,13 @@ async function bootstrap() {
       sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
       path: '/',
     }
+  });
+
+  // Register multipart plugin for file uploads
+  await app.register(fastifyMultipart, {
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 10MB limit
+    },
   });
 
   // Rate limiting removed as it's not necessary for this SaaS platform

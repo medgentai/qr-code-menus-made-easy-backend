@@ -6,7 +6,8 @@ import {
   IsUUID,
   IsEmail,
   IsUrl,
-  MaxLength
+  MaxLength,
+  ValidateIf
 } from 'class-validator';
 
 export class CreateVenueDto {
@@ -111,6 +112,7 @@ export class CreateVenueDto {
     example: 'https://example.com/venue.jpg',
     required: false,
   })
+  @ValidateIf((o) => o.imageUrl !== '' && o.imageUrl != null)
   @IsUrl()
   @IsOptional()
   imageUrl?: string;

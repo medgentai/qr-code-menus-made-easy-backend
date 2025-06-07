@@ -5,7 +5,8 @@ import {
   IsEmail,
   IsUrl,
   MaxLength,
-  IsBoolean
+  IsBoolean,
+  ValidateIf
 } from 'class-validator';
 
 export class UpdateVenueDto {
@@ -103,6 +104,7 @@ export class UpdateVenueDto {
     example: 'https://example.com/venue.jpg',
     required: false,
   })
+  @ValidateIf((o) => o.imageUrl !== '' && o.imageUrl != null)
   @IsUrl()
   @IsOptional()
   imageUrl?: string;

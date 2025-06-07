@@ -45,6 +45,8 @@ export class MenuItemEntity implements MenuItem {
   })
   imageUrl: string | null;
 
+
+
   @ApiPropertyOptional({
     description: 'The preparation time of the menu item in minutes',
     example: 15,
