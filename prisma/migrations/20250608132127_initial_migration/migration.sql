@@ -5,13 +5,13 @@ CREATE TYPE "UserRole" AS ENUM ('ADMIN', 'USER');
 CREATE TYPE "UserStatus" AS ENUM ('ACTIVE', 'INACTIVE', 'SUSPENDED');
 
 -- CreateEnum
-CREATE TYPE "OrganizationType" AS ENUM ('RESTAURANT', 'HOTEL', 'CAFE', 'FOOD_TRUCK', 'BAR', 'OTHER');
+CREATE TYPE "OrganizationType" AS ENUM ('RESTAURANT', 'HOTEL', 'CAFE', 'FOOD_TRUCK', 'BAR');
 
 -- CreateEnum
 CREATE TYPE "MemberRole" AS ENUM ('OWNER', 'ADMINISTRATOR', 'MANAGER', 'STAFF');
 
 -- CreateEnum
-CREATE TYPE "StaffType" AS ENUM ('KITCHEN', 'FRONT_OF_HOUSE', 'GENERAL');
+CREATE TYPE "StaffType" AS ENUM ('KITCHEN', 'FRONT_OF_HOUSE');
 
 -- CreateEnum
 CREATE TYPE "TableStatus" AS ENUM ('AVAILABLE', 'OCCUPIED', 'RESERVED', 'MAINTENANCE');
@@ -292,6 +292,7 @@ CREATE TABLE "qr_code_scans" (
 -- CreateTable
 CREATE TABLE "orders" (
     "id" TEXT NOT NULL,
+    "venue_id" TEXT,
     "table_id" TEXT,
     "customer_name" TEXT,
     "customer_email" TEXT,
@@ -402,6 +403,24 @@ CREATE TABLE "plans" (
     CONSTRAINT "plans_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "media_files" (
+    "id" TEXT NOT NULL,
+    "file_name" TEXT NOT NULL,
+    "original_name" TEXT NOT NULL,
+    "file_size" INTEGER NOT NULL,
+    "mime_type" TEXT NOT NULL,
+    "s3_key" TEXT NOT NULL,
+    "s3_url" TEXT NOT NULL,
+    "organization_id" TEXT,
+    "venue_id" TEXT,
+    "uploaded_by" TEXT NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "media_files_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 
@@ -481,6 +500,9 @@ ALTER TABLE "qr_codes" ADD CONSTRAINT "qr_codes_venue_id_fkey" FOREIGN KEY ("ven
 ALTER TABLE "qr_code_scans" ADD CONSTRAINT "qr_code_scans_qr_code_id_fkey" FOREIGN KEY ("qr_code_id") REFERENCES "qr_codes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "orders" ADD CONSTRAINT "orders_venue_id_fkey" FOREIGN KEY ("venue_id") REFERENCES "venues"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "orders" ADD CONSTRAINT "orders_table_id_fkey" FOREIGN KEY ("table_id") REFERENCES "tables"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -518,3 +540,12 @@ ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_plan_id_fkey" FOREIGN 
 
 -- AddForeignKey
 ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "media_files" ADD CONSTRAINT "media_files_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "media_files" ADD CONSTRAINT "media_files_venue_id_fkey" FOREIGN KEY ("venue_id") REFERENCES "venues"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "media_files" ADD CONSTRAINT "media_files_uploaded_by_fkey" FOREIGN KEY ("uploaded_by") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;

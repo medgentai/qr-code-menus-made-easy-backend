@@ -25,59 +25,59 @@ model User {
   otpCode            String?                  @map("otp_code")
   otpExpiresAt       DateTime?                @map("otp_expires_at")
   refreshToken       String?                  @map("refresh_token")
+  uploadedMediaFiles MediaFile[]
+  invitations        OrganizationInvitation[]
   organizations      OrganizationMember[]
   ownedOrganizations Organization[]           @relation("OrganizationOwner")
-  invitations        OrganizationInvitation[]
-  sessions           Session[]
   payments           Payment[]
+  sessions           Session[]
   subscriptions      Subscription[]
-  uploadedMediaFiles MediaFile[]
 
   @@map("users")
 }
 
 model Session {
-  id            String    @id @default(uuid())
-  userId        String    @map("user_id")
-  token         String    @unique
-  refreshToken  String?   @map("refresh_token")
-  deviceInfo    Json?     @map("device_info")
-  ipAddress     String?   @map("ip_address")
-  userAgent     String?   @map("user_agent")
-  lastUsed      DateTime  @default(now()) @map("last_used")
-  expiresAt     DateTime  @map("expires_at")
-  isRevoked     Boolean   @default(false) @map("is_revoked")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  token        String   @unique
+  refreshToken String?  @map("refresh_token")
+  deviceInfo   Json?    @map("device_info")
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  lastUsed     DateTime @default(now()) @map("last_used")
+  expiresAt    DateTime @map("expires_at")
+  isRevoked    Boolean  @default(false) @map("is_revoked")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("sessions")
 }
 
 model Organization {
-  id                 String                   @id @default(uuid())
-  name               String
-  slug               String                   @unique
-  description        String?
-  logoUrl            String?
-  websiteUrl         String?
-  type               OrganizationType
-  ownerId            String                   @map("owner_id")
-  planId             String?                  @map("plan_id")
-  planStartDate      DateTime?                @map("plan_start_date")
-  planEndDate        DateTime?                @map("plan_end_date")
-  isActive           Boolean                  @default(true) @map("is_active")
-  createdAt          DateTime                 @default(now()) @map("created_at")
-  updatedAt          DateTime                 @updatedAt @map("updated_at")
-  menus              Menu[]
-  members            OrganizationMember[]
-  invitations   OrganizationInvitation[]
+  id            String                   @id @default(uuid())
+  name          String
+  slug          String                   @unique
+  description   String?
+  logoUrl       String?
+  websiteUrl    String?
+  type          OrganizationType
+  ownerId       String                   @map("owner_id")
+  planId        String?                  @map("plan_id")
+  planStartDate DateTime?                @map("plan_start_date")
+  planEndDate   DateTime?                @map("plan_end_date")
+  isActive      Boolean                  @default(true) @map("is_active")
+  createdAt     DateTime                 @default(now()) @map("created_at")
+  updatedAt     DateTime                 @updatedAt @map("updated_at")
   mediaFiles    MediaFile[]
-  owner         User                     @relation("OrganizationOwner", fields: [ownerId], references: [id], onDelete: Restrict)
-  plan          Plan?                    @relation(fields: [planId], references: [id], onDelete: SetNull)
-  venues        Venue[]
+  menus         Menu[]
+  invitations   OrganizationInvitation[]
+  members       OrganizationMember[]
+  owner         User                     @relation("OrganizationOwner", fields: [ownerId], references: [id])
+  plan          Plan?                    @relation(fields: [planId], references: [id])
   payments      Payment[]
   subscriptions Subscription[]
+  venues        Venue[]
 
   @@map("organizations")
 }
@@ -88,7 +88,7 @@ model OrganizationMember {
   userId         String       @map("user_id")
   role           MemberRole   @default(STAFF)
   staffType      StaffType?   @map("staff_type")
-  venueIds       String[]     @map("venue_ids") @default([])
+  venueIds       String[]     @default([]) @map("venue_ids")
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -105,41 +105,42 @@ model OrganizationInvitation {
   invitedBy      String           @map("invited_by")
   role           MemberRole       @default(STAFF)
   staffType      StaffType?       @map("staff_type")
-  venueIds       String[]         @map("venue_ids") @default([])
+  venueIds       String[]         @default([]) @map("venue_ids")
   status         InvitationStatus @default(PENDING)
   token          String           @unique
   expiresAt      DateTime         @map("expires_at")
   acceptedAt     DateTime?        @map("accepted_at")
   createdAt      DateTime         @default(now()) @map("created_at")
   updatedAt      DateTime         @updatedAt @map("updated_at")
-  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   inviter        User             @relation(fields: [invitedBy], references: [id], onDelete: Cascade)
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, email])
   @@map("organization_invitations")
 }
 
 model Venue {
-  id               String       @id @default(uuid())
-  organizationId   String       @map("organization_id")
-  name             String
-  description      String?
-  address          String?
-  city             String?
-  state            String?
-  country          String?
-  postalCode       String?      @map("postal_code")
-  phoneNumber      String?      @map("phone_number")
-  email            String?
-  imageUrl         String?      @map("image_url")
-  isActive         Boolean      @default(true) @map("is_active")
-  createdAt        DateTime     @default(now()) @map("created_at")
-  updatedAt        DateTime     @updatedAt @map("updated_at")
-  qrCodes          QrCode[]
-  tables           Table[]
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  payments         Payment[]
-  mediaFiles       MediaFile[]
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  name           String
+  description    String?
+  address        String?
+  city           String?
+  state          String?
+  country        String?
+  postalCode     String?      @map("postal_code")
+  phoneNumber    String?      @map("phone_number")
+  email          String?
+  imageUrl       String?      @map("image_url")
+  isActive       Boolean      @default(true) @map("is_active")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  mediaFiles     MediaFile[]
+  orders         Order[]
+  payments       Payment[]
+  qrCodes        QrCode[]
+  tables         Table[]
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("venues")
 }
@@ -276,7 +277,7 @@ model QrCode {
   updatedAt   DateTime     @updatedAt @map("updated_at")
   scans       QrCodeScan[]
   menu        Menu         @relation(fields: [menuId], references: [id], onDelete: Cascade)
-  table       Table?       @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  table       Table?       @relation(fields: [tableId], references: [id])
   venue       Venue        @relation(fields: [venueId], references: [id], onDelete: Cascade)
 
   @@map("qr_codes")
@@ -295,6 +296,7 @@ model QrCodeScan {
 
 model Order {
   id            String      @id @default(uuid())
+  venueId       String?     @map("venue_id")
   tableId       String?     @map("table_id")
   customerName  String?     @map("customer_name")
   customerEmail String?     @map("customer_email")
@@ -308,7 +310,8 @@ model Order {
   updatedAt     DateTime    @updatedAt @map("updated_at")
   completedAt   DateTime?   @map("completed_at")
   items         OrderItem[]
-  table         Table?      @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  table         Table?      @relation(fields: [tableId], references: [id])
+  venue         Venue?      @relation(fields: [venueId], references: [id])
   payments      Payment[]
 
   @@map("orders")
@@ -365,76 +368,76 @@ model Payment {
   createdAt         DateTime      @default(now()) @map("created_at")
   updatedAt         DateTime      @updatedAt @map("updated_at")
   order             Order?        @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  subscription      Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
-  organization      Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  venue             Venue?        @relation(fields: [venueId], references: [id], onDelete: SetNull)
+  organization      Organization? @relation(fields: [organizationId], references: [id])
+  subscription      Subscription? @relation(fields: [subscriptionId], references: [id])
   user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  venue             Venue?        @relation(fields: [venueId], references: [id])
 
   @@map("payments")
 }
 
 model Subscription {
-  id               String            @id @default(uuid())
-  organizationId   String            @map("organization_id")
-  planId           String            @map("plan_id")
-  userId           String            @map("user_id")
-  status           SubscriptionStatus @default(ACTIVE)
-  billingCycle     BillingCycle      @default(MONTHLY)
-  currentPeriodStart DateTime        @map("current_period_start")
-  currentPeriodEnd   DateTime        @map("current_period_end")
-  cancelAtPeriodEnd  Boolean         @default(false) @map("cancel_at_period_end")
-  canceledAt         DateTime?       @map("canceled_at")
-  trialStart         DateTime?       @map("trial_start")
-  trialEnd           DateTime?       @map("trial_end")
-  venuesIncluded     Int             @default(1) @map("venues_included")
-  venuesUsed         Int             @default(0) @map("venues_used")
-  amount             Decimal         @db.Decimal(10, 2)
-  currency           String          @default("INR")
+  id                 String             @id @default(uuid())
+  organizationId     String             @map("organization_id")
+  planId             String             @map("plan_id")
+  userId             String             @map("user_id")
+  status             SubscriptionStatus @default(ACTIVE)
+  billingCycle       BillingCycle       @default(MONTHLY)
+  currentPeriodStart DateTime           @map("current_period_start")
+  currentPeriodEnd   DateTime           @map("current_period_end")
+  cancelAtPeriodEnd  Boolean            @default(false) @map("cancel_at_period_end")
+  canceledAt         DateTime?          @map("canceled_at")
+  trialStart         DateTime?          @map("trial_start")
+  trialEnd           DateTime?          @map("trial_end")
+  venuesIncluded     Int                @default(1) @map("venues_included")
+  venuesUsed         Int                @default(0) @map("venues_used")
+  amount             Decimal            @db.Decimal(10, 2)
+  currency           String             @default("INR")
   metadata           Json?
-  createdAt          DateTime        @default(now()) @map("created_at")
-  updatedAt          DateTime        @updatedAt @map("updated_at")
-  organization       Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  plan               Plan            @relation(fields: [planId], references: [id], onDelete: Restrict)
-  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
   payments           Payment[]
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan               Plan               @relation(fields: [planId], references: [id])
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("subscriptions")
 }
 
 model Plan {
-  id                String         @id @default(uuid())
-  name              String
-  description       String?
-  organizationType  OrganizationType
-  monthlyPrice      Decimal        @map("monthly_price") @db.Decimal(10, 2)
-  annualPrice       Decimal        @map("annual_price") @db.Decimal(10, 2)
-  features          String[]
-  venuesIncluded    Int            @default(1) @map("venues_included")
-  isActive          Boolean        @default(true) @map("is_active")
-  createdAt         DateTime       @default(now()) @map("created_at")
-  updatedAt         DateTime       @updatedAt @map("updated_at")
-  organizations     Organization[]
-  subscriptions     Subscription[]
+  id               String           @id @default(uuid())
+  name             String
+  description      String?
+  organizationType OrganizationType
+  monthlyPrice     Decimal          @map("monthly_price") @db.Decimal(10, 2)
+  annualPrice      Decimal          @map("annual_price") @db.Decimal(10, 2)
+  features         String[]
+  venuesIncluded   Int              @default(1) @map("venues_included")
+  isActive         Boolean          @default(true) @map("is_active")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  organizations    Organization[]
+  subscriptions    Subscription[]
 
   @@map("plans")
 }
 
 model MediaFile {
-  id               String       @id @default(uuid())
-  fileName         String       @map("file_name")
-  originalName     String       @map("original_name")
-  fileSize         Int          @map("file_size")
-  mimeType         String       @map("mime_type")
-  s3Key            String        @map("s3_key")
-  s3Url            String        @map("s3_url")
-  organizationId   String?       @map("organization_id")
-  venueId          String?       @map("venue_id")
-  uploadedBy       String        @map("uploaded_by")
-  createdAt        DateTime      @default(now()) @map("created_at")
-  updatedAt        DateTime      @updatedAt @map("updated_at")
-  organization     Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  venue            Venue?        @relation(fields: [venueId], references: [id], onDelete: SetNull)
-  uploader         User         @relation(fields: [uploadedBy], references: [id], onDelete: Cascade)
+  id             String        @id @default(uuid())
+  fileName       String        @map("file_name")
+  originalName   String        @map("original_name")
+  fileSize       Int           @map("file_size")
+  mimeType       String        @map("mime_type")
+  s3Key          String        @map("s3_key")
+  s3Url          String        @map("s3_url")
+  organizationId String?       @map("organization_id")
+  venueId        String?       @map("venue_id")
+  uploadedBy     String        @map("uploaded_by")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  uploader       User          @relation(fields: [uploadedBy], references: [id], onDelete: Cascade)
+  venue          Venue?        @relation(fields: [venueId], references: [id])
 
   @@map("media_files")
 }

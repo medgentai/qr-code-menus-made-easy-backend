@@ -10,6 +10,12 @@ export class OrderEntity {
   id: string;
 
   @ApiPropertyOptional({
+    description: 'The venue ID',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  venueId: string | null;
+
+  @ApiPropertyOptional({
     description: 'The table ID',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
@@ -89,18 +95,6 @@ export class OrderEntity {
   items?: OrderItemEntity[];
 
   @ApiPropertyOptional({
-    description: 'The table information',
-    example: {
-      id: '123e4567-e89b-12d3-a456-426614174000',
-      name: 'Table 1',
-    },
-  })
-  table?: {
-    id: string;
-    name: string;
-  };
-
-  @ApiPropertyOptional({
     description: 'The venue information',
     example: {
       id: '123e4567-e89b-12d3-a456-426614174000',
@@ -108,6 +102,18 @@ export class OrderEntity {
     },
   })
   venue?: {
+    id: string;
+    name: string;
+  };
+
+  @ApiPropertyOptional({
+    description: 'The table information',
+    example: {
+      id: '123e4567-e89b-12d3-a456-426614174000',
+      name: 'Table 1',
+    },
+  })
+  table?: {
     id: string;
     name: string;
   };

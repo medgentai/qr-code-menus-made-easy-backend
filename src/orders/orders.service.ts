@@ -81,8 +81,22 @@ export class OrdersService {
     );
 
     // Create the order with items
+    console.log('Creating order with data:', {
+      venueId: createOrderDto.venueId,
+      tableId: createOrderDto.tableId,
+      customerName: createOrderDto.customerName,
+      customerEmail: createOrderDto.customerEmail,
+      customerPhone: createOrderDto.customerPhone,
+      roomNumber: createOrderDto.roomNumber,
+      partySize: createOrderDto.partySize,
+      status: createOrderDto.status || OrderStatus.PENDING,
+      totalAmount,
+      notes: createOrderDto.notes,
+    });
+
     const newOrder = await this.prisma.order.create({
       data: {
+        venueId: createOrderDto.venueId,
         tableId: createOrderDto.tableId,
         customerName: createOrderDto.customerName,
         customerEmail: createOrderDto.customerEmail,
@@ -97,6 +111,7 @@ export class OrdersService {
         },
       },
       include: {
+        venue: true,
         table: {
           include: {
             venue: true,
@@ -176,9 +191,19 @@ export class OrdersService {
         select: { id: true },
       });
 
-      where.tableId = {
-        in: tables.map((table) => table.id),
-      };
+      where.OR = [
+        // Orders with tables from this venue
+        {
+          tableId: {
+            in: tables.map((table) => table.id),
+          },
+        },
+        // Orders without tables but directly associated with this venue
+        {
+          venueId: filterDto.venueId,
+          tableId: null,
+        }
+      ];
     }
 
     if (filterDto.tableId) {
@@ -255,6 +280,7 @@ export class OrdersService {
     const orders = await this.prisma.order.findMany({
       where,
       include: {
+        venue: true,
         table: {
           include: {
             venue: true,
@@ -306,12 +332,26 @@ export class OrdersService {
     // Calculate pagination parameters
     const skip = (page - 1) * limit;
 
-    // Define where clause
+    // Define where clause - include orders with tables OR orders directly associated with venue
     const where: Prisma.OrderWhereInput = {
-      tableId: {
-        in: tables.map((table) => table.id),
-      },
+      OR: [
+        // Orders with tables from this venue
+        {
+          tableId: {
+            in: tables.map((table) => table.id),
+          },
+        },
+        // Orders without tables but directly associated with this venue (food trucks, etc.)
+        {
+          venueId: venueId,
+          tableId: null,
+        }
+      ]
     };
+
+    console.log('findAllForVenue - venueId:', venueId);
+    console.log('findAllForVenue - tables found:', tables.length);
+    console.log('findAllForVenue - where clause:', JSON.stringify(where, null, 2));
 
     // Add status filter if provided
     if (status) {
@@ -328,7 +368,12 @@ export class OrdersService {
     const orders = await this.prisma.order.findMany({
       where,
       include: {
-        table: true,
+        venue: true,
+        table: {
+          include: {
+            venue: true,
+          },
+        },
         items: {
           include: {
             menuItem: true,
@@ -347,6 +392,16 @@ export class OrdersService {
       take: limit,
     });
 
+    console.log('findAllForVenue - orders found:', orders.length);
+    console.log('findAllForVenue - orders:', orders.map(o => ({
+      id: o.id,
+      venueId: o.venueId,
+      tableId: o.tableId,
+      customerName: o.customerName,
+      venue: o.venue?.name,
+      table: o.table?.name
+    })));
+
     // Return paginated response
     return {
       data: orders,
@@ -363,6 +418,8 @@ export class OrdersService {
    * Find orders for an organization with pagination
    */
   async findAllForOrganization(organizationId: string, userId: string, page = 1, limit = 10, status?: OrderStatus) {
+    console.log('findAllForOrganization called with:', { organizationId, userId, page, limit, status });
+
     // Check if user is a member of the organization and get member details
     const member = await this.prisma.organizationMember.findUnique({
       where: {
@@ -377,6 +434,8 @@ export class OrdersService {
       throw new ForbiddenException('You are not a member of this organization');
     }
 
+    console.log('Member found:', { role: member.role, venueIds: member.venueIds });
+
     // Calculate pagination parameters
     const skip = (page - 1) * limit;
 
@@ -386,20 +445,44 @@ export class OrdersService {
     if (member.role === 'STAFF' && member.venueIds && member.venueIds.length > 0) {
       // Staff members: Direct venue filtering (more efficient)
       where = {
-        table: {
-          venueId: {
-            in: member.venueIds,
+        OR: [
+          // Orders with tables from assigned venues
+          {
+            table: {
+              venueId: {
+                in: member.venueIds,
+              },
+            },
           },
-        },
+          // Orders without tables but directly associated with assigned venues
+          {
+            venueId: {
+              in: member.venueIds,
+            },
+            tableId: null,
+          }
+        ]
       };
     } else {
       // Managers, Administrators, and Owners: Organization-level filtering
       where = {
-        table: {
-          venue: {
-            organizationId,
+        OR: [
+          // Orders with tables from organization venues
+          {
+            table: {
+              venue: {
+                organizationId,
+              },
+            },
           },
-        },
+          // Orders without tables but directly associated with organization venues
+          {
+            venue: {
+              organizationId,
+            },
+            tableId: null,
+          }
+        ]
       };
     }
 
@@ -408,12 +491,29 @@ export class OrdersService {
       where.status = status;
     }
 
+    console.log('findAllForOrganization - where clause:', JSON.stringify(where, null, 2));
+
+    // Debug: Check all orders in database
+    const allOrders = await this.prisma.order.findMany({
+      select: { id: true, venueId: true, tableId: true, customerName: true },
+      take: 10
+    });
+    console.log('All orders in database (first 10):', allOrders);
+
+    // Debug: Check venues for this organization
+    const venues = await this.prisma.venue.findMany({
+      where: { organizationId },
+      select: { id: true, name: true, organizationId: true }
+    });
+    console.log('Venues for organization:', venues);
+
     // Get total count and orders in parallel for better performance
     const [total, orders] = await Promise.all([
       this.prisma.order.count({ where }),
       this.prisma.order.findMany({
         where,
         include: {
+          venue: true,
           table: {
             include: {
               venue: true,
@@ -442,6 +542,19 @@ export class OrdersService {
     const hasNextPage = page < totalPages;
     const hasPreviousPage = page > 1;
 
+    console.log('findAllForOrganization - results:', {
+      total,
+      ordersFound: orders.length,
+      orders: orders.map(o => ({
+        id: o.id,
+        venueId: o.venueId,
+        tableId: o.tableId,
+        customerName: o.customerName,
+        venue: o.venue?.name,
+        table: o.table?.name
+      }))
+    });
+
     // Return paginated response
     return {
       data: orders,
@@ -459,6 +572,8 @@ export class OrdersService {
    * This method handles all filter combinations in a single API call
    */
   async findFiltered(filterDto: FilterOrdersDto, userId: string) {
+    console.log('findFiltered called with:', filterDto);
+
     // Build the where clause based on filter criteria
     const where: Prisma.OrderWhereInput = {};
 
@@ -488,29 +603,66 @@ export class OrdersService {
         if (venueIds.length === 0) {
           where.id = 'non-existent-id'; // This will return no results
         } else {
-          where.table = {
-            venueId: {
-              in: venueIds,
+          where.OR = [
+            // Orders with tables from assigned venues
+            {
+              table: {
+                venueId: {
+                  in: venueIds,
+                },
+              },
             },
-          };
+            // Orders without tables but directly associated with assigned venues
+            {
+              venueId: {
+                in: venueIds,
+              },
+              tableId: null,
+            }
+          ];
         }
       } else {
         // Managers, Administrators, and Owners: Organization-level filtering
         if (filterDto.venueId) {
           // Filter to specific venue within organization
-          where.table = {
-            venueId: filterDto.venueId,
-            venue: {
-              organizationId: filterDto.organizationId,
+          where.OR = [
+            // Orders with tables from the specific venue
+            {
+              table: {
+                venueId: filterDto.venueId,
+                venue: {
+                  organizationId: filterDto.organizationId,
+                },
+              },
             },
-          };
+            // Orders without tables but directly associated with the specific venue
+            {
+              venueId: filterDto.venueId,
+              venue: {
+                organizationId: filterDto.organizationId,
+              },
+              tableId: null,
+            }
+          ];
         } else {
           // All venues in organization
-          where.table = {
-            venue: {
-              organizationId: filterDto.organizationId,
+          where.OR = [
+            // Orders with tables from organization venues
+            {
+              table: {
+                venue: {
+                  organizationId: filterDto.organizationId,
+                },
+              },
             },
-          };
+            // Orders without tables but directly associated with organization venues
+            {
+              venue: {
+                organizationId: filterDto.organizationId,
+              },
+              tableId: null,
+            }
+          ];
         }
       }
     }
@@ -525,9 +677,19 @@ export class OrdersService {
         select: { id: true },
       });
 
-      where.tableId = {
-        in: tables.map(table => table.id),
-      };
+      where.OR = [
+        // Orders with tables from this venue
+        {
+          tableId: {
+            in: tables.map(table => table.id),
+          },
+        },
+        // Orders without tables but directly associated with this venue
+        {
+          venueId: filterDto.venueId,
+          tableId: null,
+        }
+      ];
     }
 
     // Add status filter if provided
@@ -598,12 +760,15 @@ export class OrdersService {
     const limit = filterDto.limit || 10;
     const skip = (page - 1) * limit;
 
+    console.log('findFiltered - final where clause:', JSON.stringify(where, null, 2));
+
     // Get total count and orders in parallel for better performance
     const [total, orders] = await Promise.all([
       this.prisma.order.count({ where }),
       this.prisma.order.findMany({
         where,
         include: {
+          venue: true,
           table: {
             include: {
               venue: true,
@@ -632,6 +797,19 @@ export class OrdersService {
     const hasNextPage = page < totalPages;
     const hasPreviousPage = page > 1;
 
+    console.log('findFiltered - results:', {
+      total,
+      ordersFound: orders.length,
+      orders: orders.map(o => ({
+        id: o.id,
+        venueId: o.venueId,
+        tableId: o.tableId,
+        customerName: o.customerName,
+        venue: o.venue?.name,
+        table: o.table?.name
+      }))
+    });
+
     // Return paginated response
     return {
       data: orders,
@@ -651,6 +829,7 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({
       where: { id },
       include: {
+        venue: true,
         table: {
           include: {
             venue: true,
@@ -676,7 +855,9 @@ export class OrdersService {
     // Special handling for public orders (system user)
     if (userId !== 'system') {
       // Check if user has access to the venue
-      if (order.table) {
+      if (order.venue) {
+        await this.venuesService.findOne(order.venue.id, userId);
+      } else if (order.table) {
         await this.venuesService.findOne(order.table.venueId, userId);
       }
     }
