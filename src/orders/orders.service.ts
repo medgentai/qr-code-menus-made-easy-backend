@@ -76,7 +76,7 @@ export class OrdersService {
     }
 
     // Calculate order total and prepare items
-    const { orderItems, totalAmount } = await this.calculateOrderItems(
+    const { orderItems, subtotal, gstAmount, totalAmount } = await this.calculateOrderItems(
       createOrderDto.items,
     );
 
@@ -1269,10 +1269,10 @@ export class OrdersService {
   }
 
   /**
-   * Calculate order items and total amount
+   * Calculate order items and total amount with GST
    */
   private async calculateOrderItems(items: CreateOrderItemDto[]) {
-    let totalAmount = 0;
+    let subtotal = 0;
     const orderItems: Array<{
       menuItemId: string;
       quantity: number;
@@ -1300,8 +1300,8 @@ export class OrdersService {
         );
       }
 
-      // Calculate item price
-      const unitPrice = Number(menuItem.price);
+      // Calculate item price - use discounted price if available, otherwise use regular price
+      const unitPrice = Number(menuItem.discountPrice || menuItem.price);
       let totalPrice = unitPrice * item.quantity;
 
       // Prepare modifiers
@@ -1332,8 +1332,8 @@ export class OrdersService {
         }
       }
 
-      // Add to total amount
-      totalAmount += totalPrice;
+      // Add to subtotal (before GST)
+      subtotal += totalPrice;
 
       // Add to order items
       orderItems.push({
@@ -1349,6 +1349,12 @@ export class OrdersService {
       });
     }
 
-    return { orderItems, totalAmount };
+    // Calculate GST (5% total: 2.5% CGST + 2.5% SGST)
+    const gstAmount = subtotal * 0.05;
+
+    // Calculate total amount including GST
+    const totalAmount = subtotal + gstAmount;
+
+    return { orderItems, subtotal, gstAmount, totalAmount };
   }
 }
