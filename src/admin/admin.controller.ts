@@ -29,6 +29,14 @@ import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import { PlatformStatsEntity } from './entities/platform-stats.entity';
 import { UserManagementEntity } from './entities/user-management.entity';
 import { OrganizationManagementEntity } from './entities/organization-management.entity';
+import { SubscriptionManagementEntity, SubscriptionListResponse, SubscriptionStatsEntity } from './entities/subscription-management.entity';
+import {
+  GetSubscriptionsDto,
+  UpdateSubscriptionStatusDto,
+  PauseSubscriptionDto,
+  CancelSubscriptionDto,
+  ModifySubscriptionDto
+} from './dto/subscription-management.dto';
 
 @ApiTags('admin')
 @Controller('admin')
@@ -189,5 +197,105 @@ export class AdminController {
   })
   getSystemInfo() {
     return this.adminService.getSystemInfo();
+  }
+
+  // Subscription Management Endpoints
+  @Get('subscriptions')
+  @ApiOperation({ summary: 'Get all subscriptions with filtering and pagination' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Subscriptions retrieved successfully',
+    type: SubscriptionListResponse,
+  })
+  getAllSubscriptions(@Query() query: GetSubscriptionsDto) {
+    return this.adminService.getAllSubscriptions(query);
+  }
+
+  @Get('subscriptions/stats')
+  @ApiOperation({ summary: 'Get subscription statistics' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Subscription statistics retrieved successfully',
+    type: SubscriptionStatsEntity,
+  })
+  getSubscriptionStats() {
+    return this.adminService.getSubscriptionStats();
+  }
+
+  @Get('subscriptions/:id')
+  @ApiOperation({ summary: 'Get subscription details by ID' })
+  @ApiParam({ name: 'id', description: 'Subscription ID' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Subscription details retrieved successfully',
+    type: SubscriptionManagementEntity,
+  })
+  getSubscriptionById(@Param('id') id: string) {
+    return this.adminService.getSubscriptionById(id);
+  }
+
+  @Patch('subscriptions/:id/status')
+  @ApiOperation({ summary: 'Update subscription status' })
+  @ApiParam({ name: 'id', description: 'Subscription ID' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Subscription status updated successfully',
+    type: SubscriptionManagementEntity,
+  })
+  updateSubscriptionStatus(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateSubscriptionStatusDto,
+  ) {
+    return this.adminService.updateSubscriptionStatus(id, updateDto.status, updateDto.reason);
+  }
+
+  @Post('subscriptions/:id/pause')
+  @ApiOperation({ summary: 'Pause a subscription' })
+  @ApiParam({ name: 'id', description: 'Subscription ID' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Subscription paused successfully',
+    type: SubscriptionManagementEntity,
+  })
+  pauseSubscription(
+    @Param('id') id: string,
+    @Body() pauseDto: PauseSubscriptionDto,
+  ) {
+    return this.adminService.pauseSubscription(id, pauseDto.reason, pauseDto.resumeDate);
+  }
+
+  @Post('subscriptions/:id/cancel')
+  @ApiOperation({ summary: 'Cancel a subscription' })
+  @ApiParam({ name: 'id', description: 'Subscription ID' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Subscription cancelled successfully',
+    type: SubscriptionManagementEntity,
+  })
+  cancelSubscription(
+    @Param('id') id: string,
+    @Body() cancelDto: CancelSubscriptionDto,
+  ) {
+    return this.adminService.cancelSubscription(
+      id,
+      cancelDto.immediate,
+      cancelDto.reason,
+      cancelDto.offerRefund
+    );
+  }
+
+  @Patch('subscriptions/:id/modify')
+  @ApiOperation({ summary: 'Modify a subscription' })
+  @ApiParam({ name: 'id', description: 'Subscription ID' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Subscription modified successfully',
+    type: SubscriptionManagementEntity,
+  })
+  modifySubscription(
+    @Param('id') id: string,
+    @Body() modifyDto: ModifySubscriptionDto,
+  ) {
+    return this.adminService.modifySubscription(id, modifyDto);
   }
 }
