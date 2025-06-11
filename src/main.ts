@@ -9,6 +9,11 @@ import { PrismaService } from './prisma/prisma.service';
 import fastifyCookie from '@fastify/cookie';
 import fastifyMultipart from '@fastify/multipart';
 
+// Fix BigInt serialization issue
+(BigInt.prototype as any).toJSON = function() {
+  return this.toString();
+};
+
 async function bootstrap() {
   // Create custom logger
   const logger = new AppLoggerService();

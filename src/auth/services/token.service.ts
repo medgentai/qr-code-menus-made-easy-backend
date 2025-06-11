@@ -169,6 +169,12 @@ export class TokenService {
         throw new UnauthorizedException('User not found');
       }
 
+      // Check if user account is active
+      if (user.status !== 'ACTIVE') {
+        this.logger.warn(`Token refresh attempt for inactive user: ${user.email} (status: ${user.status})`);
+        throw new UnauthorizedException('User account is not active');
+      }
+
       // Verify device fingerprint if provided
       if (fingerprint && session.userAgent) {
         // Log fingerprint details for debugging
@@ -316,6 +322,12 @@ export class TokenService {
 
       if (!user) {
         throw new UnauthorizedException('User not found');
+      }
+
+      // Check if user account is active
+      if (user.status !== 'ACTIVE') {
+        this.logger.warn(`Token refresh attempt for inactive user: ${user.email} (status: ${user.status})`);
+        throw new UnauthorizedException('User account is not active');
       }
 
       // Update device info
