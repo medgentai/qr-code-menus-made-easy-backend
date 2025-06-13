@@ -1269,7 +1269,7 @@ export class OrdersService {
   }
 
   /**
-   * Calculate order items and total amount with GST
+   * Calculate order items and total amount
    */
   private async calculateOrderItems(items: CreateOrderItemDto[]) {
     let subtotal = 0;
@@ -1349,11 +1349,11 @@ export class OrdersService {
       });
     }
 
-    // Calculate GST (5% total: 2.5% CGST + 2.5% SGST)
-    const gstAmount = subtotal * 0.05;
+    // No GST calculation
+    const gstAmount = 0;
 
-    // Calculate total amount including GST
-    const totalAmount = subtotal + gstAmount;
+    // Total amount is the same as subtotal (no GST)
+    const totalAmount = subtotal;
 
     return { orderItems, subtotal, gstAmount, totalAmount };
   }
