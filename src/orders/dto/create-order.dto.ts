@@ -13,7 +13,7 @@ import {
   IsEnum,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, ServiceType } from '@prisma/client';
 
 export class CreateOrderItemModifierDto {
   @ApiProperty({
@@ -147,4 +147,13 @@ export class CreateOrderDto {
   @IsEnum(OrderStatus)
   @IsOptional()
   status?: OrderStatus;
+
+  @ApiPropertyOptional({
+    description: 'The service type for tax calculation',
+    enum: ServiceType,
+    default: ServiceType.DINE_IN,
+  })
+  @IsEnum(ServiceType)
+  @IsOptional()
+  serviceType?: ServiceType;
 }

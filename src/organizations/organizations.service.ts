@@ -1,5 +1,6 @@
 import { Injectable, ConflictException, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { TaxConfigurationService } from '../tax/services/tax-configuration.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { AddMemberDto } from './dto/add-member.dto';
@@ -9,7 +10,10 @@ import { OrganizationDetailsDto, SubscriptionInfoDto } from './dto/organization-
 
 @Injectable()
 export class OrganizationsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private taxConfigurationService: TaxConfigurationService,
+  ) {}
 
   /**
    * Create a new organization
@@ -47,6 +51,17 @@ export class OrganizationsService {
         role: 'OWNER',
       },
     });
+
+    // Create default tax configurations for the organization
+    try {
+      await this.taxConfigurationService.createDefaultTaxConfigurations(
+        organization.id,
+        organization.type
+      );
+    } catch (error) {
+      // Log error but don't fail organization creation
+      console.error(`Failed to create default tax configurations for organization ${organization.id}:`, error.message);
+    }
 
     return organization;
   }

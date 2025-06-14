@@ -55,31 +55,54 @@ model Session {
 }
 
 model Organization {
-  id            String                   @id @default(uuid())
-  name          String
-  slug          String                   @unique
-  description   String?
-  logoUrl       String?
-  websiteUrl    String?
-  type          OrganizationType
-  ownerId       String                   @map("owner_id")
-  planId        String?                  @map("plan_id")
-  planStartDate DateTime?                @map("plan_start_date")
-  planEndDate   DateTime?                @map("plan_end_date")
-  isActive      Boolean                  @default(true) @map("is_active")
-  createdAt     DateTime                 @default(now()) @map("created_at")
-  updatedAt     DateTime                 @updatedAt @map("updated_at")
-  mediaFiles    MediaFile[]
-  menus         Menu[]
-  invitations   OrganizationInvitation[]
-  members       OrganizationMember[]
-  owner         User                     @relation("OrganizationOwner", fields: [ownerId], references: [id])
-  plan          Plan?                    @relation(fields: [planId], references: [id])
-  payments      Payment[]
-  subscriptions Subscription[]
-  venues        Venue[]
+  id                String                   @id @default(uuid())
+  name              String
+  slug              String                   @unique
+  description       String?
+  logoUrl           String?
+  websiteUrl        String?
+  type              OrganizationType
+  ownerId           String                   @map("owner_id")
+  planId            String?                  @map("plan_id")
+  planStartDate     DateTime?                @map("plan_start_date")
+  planEndDate       DateTime?                @map("plan_end_date")
+  isActive          Boolean                  @default(true) @map("is_active")
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
+  mediaFiles        MediaFile[]
+  menus             Menu[]
+  invitations       OrganizationInvitation[]
+  members           OrganizationMember[]
+  owner             User                     @relation("OrganizationOwner", fields: [ownerId], references: [id])
+  plan              Plan?                    @relation(fields: [planId], references: [id])
+  payments          Payment[]
+  subscriptions     Subscription[]
+  venues            Venue[]
+  taxConfigurations TaxConfiguration[]
 
   @@map("organizations")
+}
+
+model TaxConfiguration {
+  id                String           @id @default(uuid())
+  organizationId    String           @map("organization_id")
+  name              String
+  description       String?
+  organizationType  OrganizationType
+  taxType           TaxType          @default(GST)
+  taxRate           Decimal          @map("tax_rate") @db.Decimal(5, 2)
+  isDefault         Boolean          @default(false) @map("is_default")
+  isActive          Boolean          @default(true) @map("is_active")
+  isTaxExempt       Boolean          @default(false) @map("is_tax_exempt")
+  isPriceInclusive  Boolean          @default(false) @map("is_price_inclusive")
+  applicableRegion  String?          @map("applicable_region")
+  serviceType       ServiceType?     @map("service_type")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, organizationType, taxType, serviceType, isDefault])
+  @@map("tax_configurations")
 }
 
 model OrganizationMember {
@@ -295,24 +318,31 @@ model QrCodeScan {
 }
 
 model Order {
-  id            String      @id @default(uuid())
-  venueId       String?     @map("venue_id")
-  tableId       String?     @map("table_id")
-  customerName  String?     @map("customer_name")
-  customerEmail String?     @map("customer_email")
-  customerPhone String?     @map("customer_phone")
-  roomNumber    String?     @map("room_number")
-  partySize     Int?        @map("party_size")
-  status        OrderStatus @default(PENDING)
-  totalAmount   Decimal     @default(0) @map("total_amount") @db.Decimal(10, 2)
-  notes         String?
-  createdAt     DateTime    @default(now()) @map("created_at")
-  updatedAt     DateTime    @updatedAt @map("updated_at")
-  completedAt   DateTime?   @map("completed_at")
-  items         OrderItem[]
-  table         Table?      @relation(fields: [tableId], references: [id])
-  venue         Venue?      @relation(fields: [venueId], references: [id])
-  payments      Payment[]
+  id              String      @id @default(uuid())
+  venueId         String?     @map("venue_id")
+  tableId         String?     @map("table_id")
+  customerName    String?     @map("customer_name")
+  customerEmail   String?     @map("customer_email")
+  customerPhone   String?     @map("customer_phone")
+  roomNumber      String?     @map("room_number")
+  partySize       Int?        @map("party_size")
+  status          OrderStatus @default(PENDING)
+  subtotalAmount  Decimal     @default(0) @map("subtotal_amount") @db.Decimal(10, 2)
+  taxAmount       Decimal     @default(0) @map("tax_amount") @db.Decimal(10, 2)
+  taxRate         Decimal     @default(0) @map("tax_rate") @db.Decimal(5, 2)
+  taxType         TaxType     @default(GST) @map("tax_type")
+  serviceType     ServiceType @default(DINE_IN) @map("service_type")
+  totalAmount     Decimal     @default(0) @map("total_amount") @db.Decimal(10, 2)
+  isTaxExempt     Boolean     @default(false) @map("is_tax_exempt")
+  isPriceInclusive Boolean    @default(false) @map("is_price_inclusive")
+  notes           String?
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+  completedAt     DateTime?   @map("completed_at")
+  items           OrderItem[]
+  table           Table?      @relation(fields: [tableId], references: [id])
+  venue           Venue?      @relation(fields: [venueId], references: [id])
+  payments        Payment[]
 
   @@map("orders")
 }
@@ -459,6 +489,17 @@ enum OrganizationType {
   CAFE
   FOOD_TRUCK
   BAR
+}
+
+enum TaxType {
+  GST  // Only GST is applicable for food service in India (since July 2017)
+}
+
+enum ServiceType {
+  DINE_IN
+  TAKEAWAY
+  DELIVERY
+  ALL
 }
 
 enum MemberRole {

@@ -8,12 +8,14 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { VenuesService } from '../venues/venues.service';
 import { OrganizationsService } from '../organizations/organizations.service';
+import { TaxCalculationService } from '../tax/services/tax-calculation.service';
 
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
 import { UpdateOrderDto, UpdateOrderItemQuantityDto } from './dto/update-order.dto';
 import { UpdateOrderItemDto } from './dto/update-order-item.dto';
 import { FilterOrdersDto } from './dto/filter-orders.dto';
-import { OrderStatus, OrderItemStatus, Prisma } from '@prisma/client';
+import { OrderStatus, OrderItemStatus, Prisma, ServiceType } from '@prisma/client';
+import { OrderItemForTaxDto } from '../tax/dto/tax-calculation.dto';
 import { OrderEventsGateway } from './events/order-events.gateway';
 
 @Injectable()
@@ -25,6 +27,7 @@ export class OrdersService {
     private venuesService: VenuesService,
     private organizationsService: OrganizationsService,
     private orderEventsGateway: OrderEventsGateway,
+    private taxCalculationService: TaxCalculationService,
   ) {}
 
   /**
@@ -76,8 +79,10 @@ export class OrdersService {
     }
 
     // Calculate order total and prepare items
-    const { orderItems, subtotal, gstAmount, totalAmount } = await this.calculateOrderItems(
+    const { orderItems, subtotal, taxAmount, totalAmount, taxBreakdown } = await this.calculateOrderItems(
       createOrderDto.items,
+      createOrderDto.venueId,
+      createOrderDto.serviceType || ServiceType.DINE_IN,
     );
 
     // Create the order with items
@@ -104,7 +109,14 @@ export class OrdersService {
         roomNumber: createOrderDto.roomNumber,
         partySize: createOrderDto.partySize,
         status: createOrderDto.status || OrderStatus.PENDING,
+        subtotalAmount: subtotal,
+        taxAmount: taxAmount,
+        taxRate: taxBreakdown.taxRate,
+        taxType: taxBreakdown.taxType,
+        serviceType: createOrderDto.serviceType || ServiceType.DINE_IN,
         totalAmount,
+        isTaxExempt: taxBreakdown.isTaxExempt,
+        isPriceInclusive: taxBreakdown.isPriceInclusive,
         notes: createOrderDto.notes,
         items: {
           create: orderItems,
@@ -914,8 +926,20 @@ export class OrdersService {
 
     // Handle adding new items
     if (updateOrderDto.addItems && updateOrderDto.addItems.length > 0) {
-      const { orderItems, totalAmount } = await this.calculateOrderItems(
+      // Get the current order to access venue and service type
+      const currentOrder = await this.prisma.order.findUnique({
+        where: { id },
+        select: { venueId: true, serviceType: true },
+      });
+
+      if (!currentOrder) {
+        throw new NotFoundException(`Order with ID ${id} not found`);
+      }
+
+      const { orderItems } = await this.calculateOrderItems(
         updateOrderDto.addItems,
+        currentOrder.venueId!,
+        currentOrder.serviceType,
       );
 
       // Create new items
@@ -934,10 +958,6 @@ export class OrdersService {
         });
       }
 
-      // Update total amount
-      updateData.totalAmount = {
-        increment: totalAmount,
-      };
     }
 
     // Handle updating existing items (quantity/notes)
@@ -1002,22 +1022,6 @@ export class OrdersService {
 
     // Handle removing items
     if (updateOrderDto.removeItemIds && updateOrderDto.removeItemIds.length > 0) {
-      // Get the items to be removed
-      const itemsToRemove = await this.prisma.orderItem.findMany({
-        where: {
-          id: {
-            in: updateOrderDto.removeItemIds,
-          },
-          orderId: id,
-        },
-      });
-
-      // Calculate total amount to subtract
-      const totalToSubtract = itemsToRemove.reduce(
-        (sum, item) => sum + Number(item.totalPrice),
-        0,
-      );
-
       // Delete the items
       await this.prisma.orderItem.deleteMany({
         where: {
@@ -1027,15 +1031,10 @@ export class OrdersService {
           orderId: id,
         },
       });
-
-      // Update total amount
-      updateData.totalAmount = {
-        decrement: totalToSubtract,
-      };
     }
 
     // Update the order
-    const updatedOrder = await this.prisma.order.update({
+    let updatedOrder = await this.prisma.order.update({
       where: { id },
       data: updateData,
       include: {
@@ -1056,6 +1055,38 @@ export class OrdersService {
         },
       },
     });
+
+    // Recalculate totals if items were added or removed
+    if ((updateOrderDto.addItems && updateOrderDto.addItems.length > 0) ||
+        (updateOrderDto.removeItemIds && updateOrderDto.removeItemIds.length > 0)) {
+      await this.recalculateOrderTotals(id);
+
+      // Fetch the updated order with all relations
+      const recalculatedOrder = await this.prisma.order.findUnique({
+        where: { id },
+        include: {
+          table: {
+            include: {
+              venue: true,
+            },
+          },
+          items: {
+            include: {
+              menuItem: true,
+              modifiers: {
+                include: {
+                  modifier: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (recalculatedOrder) {
+        updatedOrder = recalculatedOrder;
+      }
+    }
 
     // Emit order updated event if status was changed
     if (updateOrderDto.status !== undefined) {
@@ -1121,23 +1152,12 @@ export class OrdersService {
       const newQuantity = updateOrderItemDto.quantity;
       const unitPrice = Number(item.unitPrice);
 
-      // Calculate new total price
-      const oldTotalPrice = Number(item.totalPrice);
+      // Calculate new total price (excluding modifiers for now)
       const newTotalPrice = unitPrice * newQuantity;
 
       // Update quantity and total price
       updateData.quantity = newQuantity;
       updateData.totalPrice = newTotalPrice;
-
-      // Update order total amount
-      await this.prisma.order.update({
-        where: { id: orderId },
-        data: {
-          totalAmount: {
-            increment: newTotalPrice - oldTotalPrice,
-          },
-        },
-      });
     }
 
     // Handle adding modifiers
@@ -1164,42 +1184,10 @@ export class OrdersService {
           },
         });
       }
-
-      // Calculate total price to add
-      const totalToAdd = modifiers.reduce(
-        (sum, modifier) => sum + Number(modifier.price),
-        0,
-      );
-
-      // Update order total amount
-      await this.prisma.order.update({
-        where: { id: orderId },
-        data: {
-          totalAmount: {
-            increment: totalToAdd,
-          },
-        },
-      });
     }
 
     // Handle removing modifiers
     if (updateOrderItemDto.removeModifierIds && updateOrderItemDto.removeModifierIds.length > 0) {
-      // Get the modifiers to be removed
-      const modifiersToRemove = await this.prisma.orderItemModifier.findMany({
-        where: {
-          id: {
-            in: updateOrderItemDto.removeModifierIds,
-          },
-          orderItemId: itemId,
-        },
-      });
-
-      // Calculate total price to subtract
-      const totalToSubtract = modifiersToRemove.reduce(
-        (sum, modifier) => sum + Number(modifier.price),
-        0,
-      );
-
       // Delete the modifiers
       await this.prisma.orderItemModifier.deleteMany({
         where: {
@@ -1207,16 +1195,6 @@ export class OrdersService {
             in: updateOrderItemDto.removeModifierIds,
           },
           orderItemId: itemId,
-        },
-      });
-
-      // Update order total amount
-      await this.prisma.order.update({
-        where: { id: orderId },
-        data: {
-          totalAmount: {
-            decrement: totalToSubtract,
-          },
         },
       });
     }
@@ -1234,6 +1212,13 @@ export class OrdersService {
         },
       },
     });
+
+    // Recalculate order totals if quantity or modifiers were changed
+    if (updateOrderItemDto.quantity !== undefined ||
+        (updateOrderItemDto.addModifiers && updateOrderItemDto.addModifiers.length > 0) ||
+        (updateOrderItemDto.removeModifierIds && updateOrderItemDto.removeModifierIds.length > 0)) {
+      await this.recalculateOrderTotals(orderId);
+    }
 
     // Emit order item updated event if status was changed
     if (updateOrderItemDto.status !== undefined) {
@@ -1269,10 +1254,13 @@ export class OrdersService {
   }
 
   /**
-   * Calculate order items and total amount
+   * Calculate order items and total amount with tax
    */
-  private async calculateOrderItems(items: CreateOrderItemDto[]) {
-    let subtotal = 0;
+  private async calculateOrderItems(
+    items: CreateOrderItemDto[],
+    venueId: string,
+    serviceType: ServiceType
+  ) {
     const orderItems: Array<{
       menuItemId: string;
       quantity: number;
@@ -1287,6 +1275,8 @@ export class OrdersService {
         }>;
       };
     }> = [];
+
+    const taxItems: OrderItemForTaxDto[] = [];
 
     for (const item of items) {
       // Get menu item
@@ -1303,6 +1293,7 @@ export class OrdersService {
       // Calculate item price - use discounted price if available, otherwise use regular price
       const unitPrice = Number(menuItem.discountPrice || menuItem.price);
       let totalPrice = unitPrice * item.quantity;
+      let modifiersPrice = 0;
 
       // Prepare modifiers
       const modifierData: Array<{
@@ -1325,15 +1316,13 @@ export class OrdersService {
         for (const modifier of modifiers) {
           const modifierPrice = Number(modifier.price);
           totalPrice += modifierPrice;
+          modifiersPrice += modifierPrice;
           modifierData.push({
             modifierId: modifier.id,
             price: modifierPrice,
           });
         }
       }
-
-      // Add to subtotal (before GST)
-      subtotal += totalPrice;
 
       // Add to order items
       orderItems.push({
@@ -1347,14 +1336,110 @@ export class OrdersService {
           create: modifierData,
         },
       });
+
+      // Add to tax calculation items
+      taxItems.push({
+        menuItemId: item.menuItemId,
+        quantity: item.quantity,
+        unitPrice,
+        modifiersPrice: modifiersPrice > 0 ? modifiersPrice : undefined,
+      });
     }
 
-    // No GST calculation
-    const gstAmount = 0;
+    // Get venue and organization information for tax calculation
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: venueId },
+      include: {
+        organization: true,
+      },
+    });
 
-    // Total amount is the same as subtotal (no GST)
-    const totalAmount = subtotal;
+    if (!venue) {
+      throw new BadRequestException(`Venue with ID ${venueId} not found`);
+    }
 
-    return { orderItems, subtotal, gstAmount, totalAmount };
+    // Calculate tax using the tax calculation service
+    const taxCalculation = await this.taxCalculationService.calculateOrderTax(
+      venue.organizationId,
+      venue.organization.type,
+      serviceType,
+      taxItems
+    );
+
+    return {
+      orderItems,
+      subtotal: taxCalculation.subtotalAmount,
+      taxAmount: taxCalculation.taxAmount,
+      totalAmount: taxCalculation.totalAmount,
+      taxBreakdown: taxCalculation.taxBreakdown,
+    };
+  }
+
+  /**
+   * Recalculate order totals based on current items
+   */
+  private async recalculateOrderTotals(orderId: string) {
+    // Get the order with all its items and venue information
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        items: {
+          include: {
+            menuItem: true,
+            modifiers: {
+              include: {
+                modifier: true,
+              },
+            },
+          },
+        },
+        venue: {
+          include: {
+            organization: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Order with ID ${orderId} not found`);
+    }
+
+    // Convert order items to tax calculation format
+    const taxItems: OrderItemForTaxDto[] = order.items.map((item) => {
+      const modifiersPrice = item.modifiers.reduce(
+        (sum, mod) => sum + Number(mod.price),
+        0
+      );
+
+      return {
+        menuItemId: item.menuItemId,
+        quantity: item.quantity,
+        unitPrice: Number(item.unitPrice),
+        modifiersPrice: modifiersPrice > 0 ? modifiersPrice : undefined,
+      };
+    });
+
+    // Calculate tax using the tax calculation service
+    const taxCalculation = await this.taxCalculationService.calculateOrderTax(
+      order.venue!.organizationId,
+      order.venue!.organization.type,
+      order.serviceType,
+      taxItems
+    );
+
+    // Update the order with new totals
+    return this.prisma.order.update({
+      where: { id: orderId },
+      data: {
+        subtotalAmount: taxCalculation.subtotalAmount,
+        taxAmount: taxCalculation.taxAmount,
+        taxRate: taxCalculation.taxBreakdown.taxRate,
+        taxType: taxCalculation.taxBreakdown.taxType,
+        totalAmount: taxCalculation.totalAmount,
+        isTaxExempt: taxCalculation.taxBreakdown.isTaxExempt,
+        isPriceInclusive: taxCalculation.taxBreakdown.isPriceInclusive,
+      },
+    });
   }
 }

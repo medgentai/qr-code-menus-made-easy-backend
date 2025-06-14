@@ -18,6 +18,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { AdminModule } from './admin/admin.module';
+import { TaxModule } from './tax/tax.module';
 
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
@@ -58,6 +59,7 @@ import { RolesGuard } from './auth/guards/roles.guard';
     UploadsModule,
     AnalyticsModule,
     AdminModule,
+    TaxModule,
   ],
   controllers: [AppController],
   providers: [
