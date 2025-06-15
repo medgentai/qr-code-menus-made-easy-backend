@@ -81,6 +81,13 @@ export class PublicService {
   async findMenuByOrganizationAndTable(slug: string, tableId?: string, venueId?: string) {
     const organization = await this.prisma.organization.findUnique({
       where: { slug },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        logoUrl: true,
+        viewOnlyMode: true,
+      },
     });
 
     if (!organization) {
@@ -92,7 +99,14 @@ export class PublicService {
       const table = await this.prisma.table.findUnique({
         where: { id: tableId },
         include: {
-          venue: true,
+          venue: {
+            select: {
+              id: true,
+              name: true,
+              organizationId: true,
+              viewOnlyMode: true,
+            },
+          },
           qrCode: {
             include: {
               menu: {
@@ -113,6 +127,7 @@ export class PublicService {
                       name: true,
                       slug: true,
                       logoUrl: true,
+                      viewOnlyMode: true,
                     },
                   },
                 },
@@ -132,13 +147,27 @@ export class PublicService {
 
       if (!table.qrCode) {
         // If no QR code is found for the table, return the default menu
-        return this.getDefaultMenu(organization.id);
+        const defaultMenu = await this.getDefaultMenu(organization.id);
+        return {
+          ...defaultMenu,
+          table: {
+            id: table.id,
+            name: table.name,
+            capacity: table.capacity,
+          },
+          venue: {
+            id: table.venue.id,
+            name: table.venue.name,
+            viewOnlyMode: table.venue.viewOnlyMode,
+          },
+          viewOnlyMode: organization.viewOnlyMode || table.venue.viewOnlyMode,
+        };
       }
 
       // Record the scan
       await this.recordScanByQrCodeData(`https://menu.scanserve.com/${slug}?table=${tableId}`);
 
-      // Include table information in the menu response
+      // Include table information and view-only mode in the menu response
       const menuWithTable = {
         ...table.qrCode.menu,
         table: {
@@ -146,6 +175,12 @@ export class PublicService {
           name: table.name,
           capacity: table.capacity,
         },
+        venue: {
+          id: table.venue.id,
+          name: table.venue.name,
+          viewOnlyMode: table.venue.viewOnlyMode,
+        },
+        viewOnlyMode: organization.viewOnlyMode || table.venue.viewOnlyMode,
       };
 
       return menuWithTable;
@@ -177,6 +212,7 @@ export class PublicService {
                       name: true,
                       slug: true,
                       logoUrl: true,
+                      viewOnlyMode: true,
                     },
                   },
                 },
@@ -196,17 +232,41 @@ export class PublicService {
 
       if (venue.qrCodes.length === 0) {
         // If no QR code is found for the venue, return the default menu
-        return this.getDefaultMenu(organization.id);
+        const defaultMenu = await this.getDefaultMenu(organization.id);
+        return {
+          ...defaultMenu,
+          venue: {
+            id: venue.id,
+            name: venue.name,
+            viewOnlyMode: venue.viewOnlyMode,
+          },
+          viewOnlyMode: organization.viewOnlyMode || venue.viewOnlyMode,
+        };
       }
 
       // Record the scan
       await this.recordScanByQrCodeData(`https://menu.scanserve.com/${slug}?venue=${venueId}`);
 
-      return venue.qrCodes[0].menu;
+      // Include venue information and view-only mode in the menu response
+      const menuWithVenue = {
+        ...venue.qrCodes[0].menu,
+        venue: {
+          id: venue.id,
+          name: venue.name,
+          viewOnlyMode: venue.viewOnlyMode,
+        },
+        viewOnlyMode: organization.viewOnlyMode || venue.viewOnlyMode,
+      };
+
+      return menuWithVenue;
     }
 
     // If neither tableId nor venueId is provided, return the default menu
-    return this.getDefaultMenu(organization.id);
+    const defaultMenu = await this.getDefaultMenu(organization.id);
+    return {
+      ...defaultMenu,
+      viewOnlyMode: organization.viewOnlyMode,
+    };
   }
 
   /**
@@ -236,6 +296,7 @@ export class PublicService {
             name: true,
             slug: true,
             logoUrl: true,
+            viewOnlyMode: true,
           },
         },
       },

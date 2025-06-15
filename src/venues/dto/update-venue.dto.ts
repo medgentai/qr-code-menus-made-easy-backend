@@ -117,4 +117,13 @@ export class UpdateVenueDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @ApiProperty({
+    description: 'Whether the venue is in view-only mode (disables ordering)',
+    example: false,
+    required: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  viewOnlyMode?: boolean;
 }

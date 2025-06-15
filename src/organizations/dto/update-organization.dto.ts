@@ -89,4 +89,13 @@ export class UpdateOrganizationDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @ApiProperty({
+    description: 'Whether the organization is in view-only mode (disables ordering)',
+    example: false,
+    required: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  viewOnlyMode?: boolean;
 }

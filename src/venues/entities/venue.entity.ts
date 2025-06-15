@@ -90,6 +90,12 @@ export class VenueEntity implements Partial<Venue> {
   isActive: boolean;
 
   @ApiProperty({
+    description: 'Whether the venue is in view-only mode (disables ordering)',
+    example: false,
+  })
+  viewOnlyMode: boolean;
+
+  @ApiProperty({
     description: 'The date when the venue was created',
     example: '2023-01-01T00:00:00Z',
   })

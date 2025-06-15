@@ -82,6 +82,12 @@ export class OrganizationEntity implements Partial<Organization> {
   isActive: boolean;
 
   @ApiProperty({
+    description: 'Whether the organization is in view-only mode (disables ordering)',
+    example: false,
+  })
+  viewOnlyMode: boolean;
+
+  @ApiProperty({
     description: 'The date when the organization was created',
     example: '2023-01-01T00:00:00Z',
   })
