@@ -12,9 +12,10 @@ import { TaxCalculationService } from '../tax/services/tax-calculation.service';
 
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
 import { UpdateOrderDto, UpdateOrderItemQuantityDto } from './dto/update-order.dto';
+import { MarkOrderPaidDto, MarkOrderUnpaidDto, PaymentStatusResponse } from './dto/mark-order-paid.dto';
 import { UpdateOrderItemDto } from './dto/update-order-item.dto';
 import { FilterOrdersDto } from './dto/filter-orders.dto';
-import { OrderStatus, OrderItemStatus, Prisma, ServiceType } from '@prisma/client';
+import { OrderStatus, OrderPaymentStatus, OrderItemStatus, Prisma, ServiceType, PaymentMethod } from '@prisma/client';
 import { OrderItemForTaxDto } from '../tax/dto/tax-calculation.dto';
 import { OrderEventsGateway } from './events/order-events.gateway';
 
@@ -1441,5 +1442,246 @@ export class OrdersService {
         isPriceInclusive: taxCalculation.taxBreakdown.isPriceInclusive,
       },
     });
+  }
+
+  /**
+   * Mark an order as paid
+   */
+  async markOrderAsPaid(orderId: string, paymentData: MarkOrderPaidDto, userId: string) {
+    // First, verify the order exists and user has access
+    const order = await this.findOne(orderId, userId);
+
+    // Validate payment amount if provided
+    if (paymentData.amount && Math.abs(paymentData.amount - Number(order.totalAmount)) > 0.01) {
+      throw new BadRequestException(
+        `Payment amount ${paymentData.amount} does not match order total ${order.totalAmount}`
+      );
+    }
+
+    // Update the order payment status
+    const updatedOrder = await this.prisma.order.update({
+      where: { id: orderId },
+      data: {
+        paymentStatus: OrderPaymentStatus.PAID,
+        paidAt: new Date(),
+        paidBy: userId,
+        paymentMethod: paymentData.paymentMethod,
+        paymentNotes: paymentData.paymentNotes,
+      },
+      include: {
+        venue: true,
+        table: {
+          include: {
+            venue: true,
+          },
+        },
+        items: {
+          include: {
+            menuItem: true,
+            modifiers: {
+              include: {
+                modifier: true,
+              },
+            },
+          },
+        },
+        paidByUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    // Emit payment status change event
+    const timestamp = new Date();
+    const message = `Order #${updatedOrder.id.substring(0, 8)} marked as PAID`;
+    const venueId = updatedOrder.table?.venue?.id || updatedOrder.venue?.id;
+    const organizationId = updatedOrder.table?.venue?.organizationId || updatedOrder.venue?.organizationId;
+
+    if (venueId && organizationId) {
+      this.orderEventsGateway.emitOrderEvent({
+        orderId: updatedOrder.id,
+        status: updatedOrder.status,
+        tableId: updatedOrder.tableId || undefined,
+        venueId,
+        organizationId,
+        timestamp,
+        message,
+      });
+    }
+
+    this.logger.log(`Order ${orderId} marked as paid by user ${userId}`);
+    return updatedOrder;
+  }
+
+  /**
+   * Mark an order as unpaid
+   */
+  async markOrderAsUnpaid(orderId: string, unpaidData: MarkOrderUnpaidDto, userId: string) {
+    // First, verify the order exists and user has access
+    const order = await this.findOne(orderId, userId);
+
+    // Update the order payment status
+    const updatedOrder = await this.prisma.order.update({
+      where: { id: orderId },
+      data: {
+        paymentStatus: OrderPaymentStatus.UNPAID,
+        paidAt: null,
+        paidBy: null,
+        paymentMethod: null,
+        paymentNotes: unpaidData.reason ? `Marked unpaid: ${unpaidData.reason}` : null,
+      },
+      include: {
+        venue: true,
+        table: {
+          include: {
+            venue: true,
+          },
+        },
+        items: {
+          include: {
+            menuItem: true,
+            modifiers: {
+              include: {
+                modifier: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Emit payment status change event
+    const timestamp = new Date();
+    const message = `Order #${updatedOrder.id.substring(0, 8)} marked as UNPAID`;
+    const venueId = updatedOrder.table?.venue?.id || updatedOrder.venue?.id;
+    const organizationId = updatedOrder.table?.venue?.organizationId || updatedOrder.venue?.organizationId;
+
+    if (venueId && organizationId) {
+      this.orderEventsGateway.emitOrderEvent({
+        orderId: updatedOrder.id,
+        status: updatedOrder.status,
+        tableId: updatedOrder.tableId || undefined,
+        venueId,
+        organizationId,
+        timestamp,
+        message,
+      });
+    }
+
+    this.logger.log(`Order ${orderId} marked as unpaid by user ${userId}`);
+    return updatedOrder;
+  }
+
+  /**
+   * Get payment status for an order
+   */
+  async getOrderPaymentStatus(orderId: string, userId: string): Promise<PaymentStatusResponse> {
+    // Use findOne which already includes access control
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId },
+      include: {
+        venue: true,
+        table: {
+          include: {
+            venue: true,
+          },
+        },
+        paidByUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    // Check access using the same logic as findOne
+    if (userId !== 'system') {
+      // Check if user has access to the venue
+      if (order.venue) {
+        await this.venuesService.findOne(order.venue.id, userId);
+      } else if (order.table) {
+        await this.venuesService.findOne(order.table.venueId, userId);
+      }
+    }
+
+    return {
+      paymentStatus: order.paymentStatus,
+      paidAt: order.paidAt,
+      paidBy: order.paidBy,
+      paidByName: order.paidByUser?.name || null,
+      paymentMethod: order.paymentMethod,
+      paymentNotes: order.paymentNotes,
+      totalAmount: Number(order.totalAmount),
+    };
+  }
+
+  /**
+   * Get all unpaid orders for a venue
+   */
+  async getUnpaidOrders(venueId: string, userId: string) {
+    // Check if venue exists and user has access
+    await this.venuesService.findOne(venueId, userId);
+
+    // Get all tables for the venue
+    const tables = await this.prisma.table.findMany({
+      where: { venueId },
+      select: { id: true },
+    });
+
+    // Find unpaid orders - exclude cancelled orders
+    const unpaidOrders = await this.prisma.order.findMany({
+      where: {
+        paymentStatus: OrderPaymentStatus.UNPAID,
+        status: {
+          not: OrderStatus.CANCELLED, // Exclude cancelled orders
+        },
+        OR: [
+          // Orders with tables from this venue
+          {
+            tableId: {
+              in: tables.map((table) => table.id),
+            },
+          },
+          // Orders without tables but directly associated with this venue
+          {
+            venueId: venueId,
+            tableId: null,
+          }
+        ]
+      },
+      include: {
+        venue: true,
+        table: {
+          include: {
+            venue: true,
+          },
+        },
+        items: {
+          include: {
+            menuItem: true,
+            modifiers: {
+              include: {
+                modifier: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return unpaidOrders;
   }
 }

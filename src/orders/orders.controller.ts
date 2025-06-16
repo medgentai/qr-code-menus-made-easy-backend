@@ -25,6 +25,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { UpdateOrderItemDto } from './dto/update-order-item.dto';
 import { FilterOrdersDto } from './dto/filter-orders.dto';
+import { MarkOrderPaidDto, MarkOrderUnpaidDto, PaymentStatusResponse } from './dto/mark-order-paid.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OrderEntity } from './entities/order.entity';
 import { OrderItemEntity } from './entities/order-item.entity';
@@ -295,6 +296,113 @@ export class OrdersController {
       updateOrderItemDto,
       req.user.id,
     );
+  }
+
+  @Patch(':id/payment/mark-paid')
+  @ApiOperation({ summary: 'Mark an order as paid' })
+  @ApiParam({ name: 'id', description: 'Order ID' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'The order has been successfully marked as paid.',
+    type: OrderEntity,
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Order not found.',
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Bad Request - payment amount mismatch.',
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Unauthorized.',
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'Forbidden.',
+  })
+  markOrderAsPaid(
+    @Param('id') id: string,
+    @Body() markOrderPaidDto: MarkOrderPaidDto,
+    @Req() req: RequestWithUser,
+  ) {
+    return this.ordersService.markOrderAsPaid(id, markOrderPaidDto, req.user.id);
+  }
+
+  @Patch(':id/payment/mark-unpaid')
+  @ApiOperation({ summary: 'Mark an order as unpaid' })
+  @ApiParam({ name: 'id', description: 'Order ID' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'The order has been successfully marked as unpaid.',
+    type: OrderEntity,
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Order not found.',
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Unauthorized.',
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'Forbidden.',
+  })
+  markOrderAsUnpaid(
+    @Param('id') id: string,
+    @Body() markOrderUnpaidDto: MarkOrderUnpaidDto,
+    @Req() req: RequestWithUser,
+  ) {
+    return this.ordersService.markOrderAsUnpaid(id, markOrderUnpaidDto, req.user.id);
+  }
+
+  @Get(':id/payment-status')
+  @ApiOperation({ summary: 'Get payment status for an order' })
+  @ApiParam({ name: 'id', description: 'Order ID' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Returns the payment status of the order.',
+    type: PaymentStatusResponse,
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Order not found.',
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Unauthorized.',
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'Forbidden.',
+  })
+  getOrderPaymentStatus(@Param('id') id: string, @Req() req: RequestWithUser) {
+    return this.ordersService.getOrderPaymentStatus(id, req.user.id);
+  }
+
+  @Get('venue/:venueId/unpaid')
+  @ApiOperation({ summary: 'Get all unpaid orders for a venue' })
+  @ApiParam({ name: 'venueId', description: 'Venue ID' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Returns all unpaid orders for the venue.',
+    type: [OrderEntity],
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Unauthorized.',
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'Forbidden.',
+  })
+  getUnpaidOrders(
+    @Param('venueId') venueId: string,
+    @Req() req: RequestWithUser,
+  ) {
+    return this.ordersService.getUnpaidOrders(venueId, req.user.id);
   }
 
   @Delete(':id')

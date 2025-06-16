@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, OrderPaymentStatus, PaymentMethod } from '@prisma/client';
 import { OrderItemEntity } from './order-item.entity';
 
 export class OrderEntity {
@@ -59,6 +59,38 @@ export class OrderEntity {
   status: OrderStatus;
 
   @ApiProperty({
+    description: 'The payment status of the order',
+    enum: OrderPaymentStatus,
+    example: OrderPaymentStatus.UNPAID,
+  })
+  paymentStatus: OrderPaymentStatus;
+
+  @ApiPropertyOptional({
+    description: 'Date and time when the order was marked as paid',
+    example: '2023-12-01T14:30:00Z',
+  })
+  paidAt: Date | null;
+
+  @ApiPropertyOptional({
+    description: 'ID of the staff member who marked the order as paid',
+    example: 'user-123',
+  })
+  paidBy: string | null;
+
+  @ApiPropertyOptional({
+    description: 'Payment method used for the order',
+    enum: PaymentMethod,
+    example: PaymentMethod.CASH,
+  })
+  paymentMethod: PaymentMethod | null;
+
+  @ApiPropertyOptional({
+    description: 'Additional notes about the payment',
+    example: 'Customer paid in cash',
+  })
+  paymentNotes: string | null;
+
+  @ApiProperty({
     description: 'The total amount of the order',
     example: 25.99,
   })
@@ -116,5 +148,19 @@ export class OrderEntity {
   table?: {
     id: string;
     name: string;
+  };
+
+  @ApiPropertyOptional({
+    description: 'The staff member who marked the order as paid',
+    example: {
+      id: '123e4567-e89b-12d3-a456-426614174000',
+      name: 'John Doe',
+      email: 'john@example.com',
+    },
+  })
+  paidByUser?: {
+    id: string;
+    name: string;
+    email: string;
   };
 }

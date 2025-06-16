@@ -8,6 +8,12 @@ CREATE TYPE "UserStatus" AS ENUM ('ACTIVE', 'INACTIVE', 'SUSPENDED');
 CREATE TYPE "OrganizationType" AS ENUM ('RESTAURANT', 'HOTEL', 'CAFE', 'FOOD_TRUCK', 'BAR');
 
 -- CreateEnum
+CREATE TYPE "TaxType" AS ENUM ('GST');
+
+-- CreateEnum
+CREATE TYPE "ServiceType" AS ENUM ('DINE_IN', 'TAKEAWAY', 'DELIVERY', 'ALL');
+
+-- CreateEnum
 CREATE TYPE "MemberRole" AS ENUM ('OWNER', 'ADMINISTRATOR', 'MANAGER', 'STAFF');
 
 -- CreateEnum
@@ -18,6 +24,9 @@ CREATE TYPE "TableStatus" AS ENUM ('AVAILABLE', 'OCCUPIED', 'RESERVED', 'MAINTEN
 
 -- CreateEnum
 CREATE TYPE "OrderStatus" AS ENUM ('PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'DELIVERED', 'COMPLETED', 'CANCELLED');
+
+-- CreateEnum
+CREATE TYPE "OrderPaymentStatus" AS ENUM ('UNPAID', 'PAID', 'PARTIALLY_PAID', 'REFUNDED');
 
 -- CreateEnum
 CREATE TYPE "OrderItemStatus" AS ENUM ('PENDING', 'PREPARING', 'READY', 'DELIVERED', 'COMPLETED', 'CANCELLED');
@@ -94,10 +103,32 @@ CREATE TABLE "organizations" (
     "plan_start_date" TIMESTAMP(3),
     "plan_end_date" TIMESTAMP(3),
     "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "view_only_mode" BOOLEAN NOT NULL DEFAULT false,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "organizations_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "tax_configurations" (
+    "id" TEXT NOT NULL,
+    "organization_id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "description" TEXT,
+    "organizationType" "OrganizationType" NOT NULL,
+    "taxType" "TaxType" NOT NULL DEFAULT 'GST',
+    "tax_rate" DECIMAL(5,2) NOT NULL,
+    "is_default" BOOLEAN NOT NULL DEFAULT false,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "is_tax_exempt" BOOLEAN NOT NULL DEFAULT false,
+    "is_price_inclusive" BOOLEAN NOT NULL DEFAULT false,
+    "applicable_region" TEXT,
+    "service_type" "ServiceType",
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "tax_configurations_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -148,6 +179,7 @@ CREATE TABLE "venues" (
     "email" TEXT,
     "image_url" TEXT,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "view_only_mode" BOOLEAN NOT NULL DEFAULT false,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -305,6 +337,18 @@ CREATE TABLE "orders" (
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
     "completed_at" TIMESTAMP(3),
+    "is_price_inclusive" BOOLEAN NOT NULL DEFAULT false,
+    "is_tax_exempt" BOOLEAN NOT NULL DEFAULT false,
+    "service_type" "ServiceType" NOT NULL DEFAULT 'DINE_IN',
+    "subtotal_amount" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "tax_amount" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "tax_rate" DECIMAL(5,2) NOT NULL DEFAULT 0,
+    "tax_type" "TaxType" NOT NULL DEFAULT 'GST',
+    "paid_at" TIMESTAMP(3),
+    "paid_by" TEXT,
+    "payment_method" "PaymentMethod",
+    "payment_notes" TEXT,
+    "payment_status" "OrderPaymentStatus" NOT NULL DEFAULT 'UNPAID',
 
     CONSTRAINT "orders_pkey" PRIMARY KEY ("id")
 );
@@ -431,6 +475,9 @@ CREATE UNIQUE INDEX "sessions_token_key" ON "sessions"("token");
 CREATE UNIQUE INDEX "organizations_slug_key" ON "organizations"("slug");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "tax_configurations_organization_id_organizationType_taxType_key" ON "tax_configurations"("organization_id", "organizationType", "taxType", "service_type", "is_default");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "organization_members_organization_id_user_id_key" ON "organization_members"("organization_id", "user_id");
 
 -- CreateIndex
@@ -450,6 +497,9 @@ ALTER TABLE "organizations" ADD CONSTRAINT "organizations_owner_id_fkey" FOREIGN
 
 -- AddForeignKey
 ALTER TABLE "organizations" ADD CONSTRAINT "organizations_plan_id_fkey" FOREIGN KEY ("plan_id") REFERENCES "plans"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "tax_configurations" ADD CONSTRAINT "tax_configurations_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "organization_members" ADD CONSTRAINT "organization_members_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -498,6 +548,9 @@ ALTER TABLE "qr_codes" ADD CONSTRAINT "qr_codes_venue_id_fkey" FOREIGN KEY ("ven
 
 -- AddForeignKey
 ALTER TABLE "qr_code_scans" ADD CONSTRAINT "qr_code_scans_qr_code_id_fkey" FOREIGN KEY ("qr_code_id") REFERENCES "qr_codes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "orders" ADD CONSTRAINT "orders_paid_by_fkey" FOREIGN KEY ("paid_by") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "orders" ADD CONSTRAINT "orders_table_id_fkey" FOREIGN KEY ("table_id") REFERENCES "tables"("id") ON DELETE SET NULL ON UPDATE CASCADE;

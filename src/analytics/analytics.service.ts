@@ -220,7 +220,7 @@ export class AnalyticsService {
         }
       ],
       status: {
-        in: ['COMPLETED', 'DELIVERED']
+        in: ['COMPLETED', 'SERVED']
       }
     };
 
