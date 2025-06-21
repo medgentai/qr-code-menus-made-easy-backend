@@ -190,6 +190,8 @@ export class PublicController {
     }
   }
 
+
+
   @Post('venues/:venueId/orders')
   @Public()
   @ApiOperation({ summary: 'Create a public order for a specific venue' })
@@ -252,6 +254,36 @@ export class PublicController {
 
         if (!table) {
           throw new BadRequestException('Table does not belong to this venue');
+        }
+      }
+
+      // Check table ordering restrictions if customer phone is provided
+      if (publicOrderDto.customerPhone && publicOrderDto.tableId) {
+        const activeOrders = await this.prisma.order.findMany({
+          where: {
+            customerPhone: publicOrderDto.customerPhone,
+            status: {
+              in: ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'SERVED']
+            },
+            paymentStatus: { not: 'PAID' }
+          },
+          include: {
+            table: {
+              include: {
+                venue: true
+              }
+            }
+          }
+        });
+
+        // Check if customer has active orders on different tables
+        const differentTableOrders = activeOrders.filter(order => order.tableId !== publicOrderDto.tableId);
+        if (differentTableOrders.length > 0) {
+          const tableNames = [...new Set(differentTableOrders.map(order => order.table?.name).filter(Boolean))];
+          const tableNamesStr = tableNames.length === 1 ? tableNames[0] : `${tableNames.slice(0, -1).join(', ')} and ${tableNames[tableNames.length - 1]}`;
+          throw new BadRequestException(
+            `You have an active order at ${tableNamesStr}. Please complete and pay for your current order before ordering from another table.`
+          );
         }
       }
 
@@ -344,6 +376,197 @@ export class PublicController {
         throw error;
       }
       throw new BadRequestException('Failed to get order status');
+    }
+  }
+
+  @Get('customers/search/:phoneNumber')
+  @Public()
+  @ApiOperation({ summary: 'Search customer by phone number and check ordering restrictions' })
+  @ApiParam({ name: 'phoneNumber', description: 'Customer phone number' })
+  @ApiQuery({ name: 'tableId', description: 'Current table ID to check restrictions against', required: false })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Returns customer profile and ordering restrictions.',
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid phone number.',
+  })
+  async searchCustomerByPhone(
+    @Param('phoneNumber') phoneNumber: string,
+    @Query('tableId') tableId?: string
+  ) {
+    try {
+      // Find the most recent order with customer details
+      const recentOrder = await this.prisma.order.findFirst({
+        where: {
+          customerPhone: phoneNumber,
+          customerName: { not: null }
+        },
+        select: {
+          customerName: true,
+          customerEmail: true,
+          customerPhone: true,
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+
+      // Find active orders (not completed and paid)
+      const activeOrders = await this.prisma.order.findMany({
+        where: {
+          customerPhone: phoneNumber,
+          status: {
+            in: ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'SERVED']
+          },
+          paymentStatus: { not: 'PAID' }
+        },
+        include: {
+          table: {
+            include: {
+              venue: true
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+
+      // Check if customer can order based on table restrictions
+      let canOrder = true;
+      let restrictionMessage: string | undefined = undefined;
+
+      if (activeOrders.length > 0 && tableId) {
+        // Check if any active orders are from different tables
+        const differentTableOrders = activeOrders.filter(order => order.tableId !== tableId);
+        const sameTableOrders = activeOrders.filter(order => order.tableId === tableId);
+
+        if (differentTableOrders.length > 0) {
+          // Customer has active orders on different tables - restrict ordering
+          canOrder = false;
+          const tableNames = [...new Set(differentTableOrders.map(order => order.table?.name).filter(Boolean))];
+          if (tableNames.length === 1) {
+            restrictionMessage = `You have an active order at ${tableNames[0]}. Please complete and pay for your current order before ordering from another table.`;
+          } else {
+            restrictionMessage = `You have active orders at multiple tables (${tableNames.join(', ')}). Please complete and pay for your current orders before placing new orders.`;
+          }
+        } else if (sameTableOrders.length > 0) {
+          // Customer has active orders on the same table - allow ordering (adding to existing order)
+          canOrder = true;
+          const tableName = sameTableOrders[0].table?.name || 'this table';
+          restrictionMessage = `You have an active order at ${tableName}. You can continue adding items to your order.`;
+        }
+      } else if (activeOrders.length > 0 && !tableId) {
+        // No table context provided, show general message
+        canOrder = false;
+        const tableNames = [...new Set(activeOrders.map(order => order.table?.name).filter(Boolean))];
+        if (tableNames.length === 1) {
+          restrictionMessage = `You have an active order at ${tableNames[0]}. Please complete and pay for your current order before ordering from another table.`;
+        } else {
+          restrictionMessage = `You have active orders at multiple tables. Please complete and pay for your current orders before placing new orders.`;
+        }
+      }
+
+      return {
+        found: !!recentOrder,
+        customer: recentOrder ? {
+          name: recentOrder.customerName,
+          email: recentOrder.customerEmail || '',
+          phone: recentOrder.customerPhone
+        } : null,
+        activeOrders: activeOrders.map(order => ({
+          orderId: order.id,
+          tableId: order.tableId,
+          tableName: order.table?.name || 'Unknown Table',
+          venueName: order.table?.venue?.name || 'Unknown Venue',
+          status: order.status,
+          paymentStatus: order.paymentStatus,
+          createdAt: order.createdAt.toISOString(),
+          totalAmount: order.totalAmount
+        })),
+        canOrder,
+        restrictionMessage
+      };
+    } catch (error) {
+      throw new BadRequestException('Failed to search customer by phone number');
+    }
+  }
+
+  @Get('customers/:phoneNumber/can-order-from-table/:tableId')
+  @Public()
+  @ApiOperation({ summary: 'Check if customer can order from specific table' })
+  @ApiParam({ name: 'phoneNumber', description: 'Customer phone number' })
+  @ApiParam({ name: 'tableId', description: 'Table ID to check' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Returns whether customer can order from the specified table.',
+  })
+  async canOrderFromTable(
+    @Param('phoneNumber') phoneNumber: string,
+    @Param('tableId') tableId: string
+  ) {
+    try {
+      // Find active orders for this customer
+      const activeOrders = await this.prisma.order.findMany({
+        where: {
+          customerPhone: phoneNumber,
+          status: {
+            in: ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'SERVED']
+          },
+          paymentStatus: { not: 'PAID' }
+        },
+        include: {
+          table: {
+            include: {
+              venue: true
+            }
+          }
+        }
+      });
+
+      if (activeOrders.length === 0) {
+        return {
+          canOrder: true,
+          reason: 'NO_RESTRICTIONS',
+          requiresConfirmation: false
+        };
+      }
+
+      // Check if customer has active order on the same table
+      const sameTableOrder = activeOrders.find(order => order.tableId === tableId);
+      if (sameTableOrder) {
+        return {
+          canOrder: true,
+          reason: 'ACTIVE_ORDER_SAME_TABLE',
+          activeOrder: {
+            orderId: sameTableOrder.id,
+            tableId: sameTableOrder.tableId,
+            tableName: sameTableOrder.table?.name || 'Unknown Table',
+            status: sameTableOrder.status,
+            paymentStatus: sameTableOrder.paymentStatus
+          },
+          requiresConfirmation: false
+        };
+      }
+
+      // Customer has active orders on different tables
+      const differentTableOrder = activeOrders[0]; // Get the first active order
+      return {
+        canOrder: false,
+        reason: 'ACTIVE_ORDER_DIFFERENT_TABLE',
+        activeOrder: {
+          orderId: differentTableOrder.id,
+          tableId: differentTableOrder.tableId,
+          tableName: differentTableOrder.table?.name || 'Unknown Table',
+          status: differentTableOrder.status,
+          paymentStatus: differentTableOrder.paymentStatus
+        },
+        requiresConfirmation: true
+      };
+    } catch (error) {
+      throw new BadRequestException('Failed to check table ordering permissions');
     }
   }
 

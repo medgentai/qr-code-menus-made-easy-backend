@@ -23,7 +23,7 @@ import {
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
-import { UpdateOrderItemDto } from './dto/update-order-item.dto';
+
 import { FilterOrdersDto } from './dto/filter-orders.dto';
 import { MarkOrderPaidDto, MarkOrderUnpaidDto, PaymentStatusResponse } from './dto/mark-order-paid.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -259,44 +259,7 @@ export class OrdersController {
     return this.ordersService.update(id, { status }, req.user.id);
   }
 
-  @Patch(':orderId/items/:itemId')
-  @ApiOperation({ summary: 'Update an order item' })
-  @ApiParam({ name: 'orderId', description: 'Order ID' })
-  @ApiParam({ name: 'itemId', description: 'Order Item ID' })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'The order item has been successfully updated.',
-    type: OrderItemEntity,
-  })
-  @ApiResponse({
-    status: HttpStatus.NOT_FOUND,
-    description: 'Order or order item not found.',
-  })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: 'Bad Request.',
-  })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: 'Unauthorized.',
-  })
-  @ApiResponse({
-    status: HttpStatus.FORBIDDEN,
-    description: 'Forbidden.',
-  })
-  updateOrderItem(
-    @Param('orderId') orderId: string,
-    @Param('itemId') itemId: string,
-    @Body() updateOrderItemDto: UpdateOrderItemDto,
-    @Req() req: RequestWithUser,
-  ) {
-    return this.ordersService.updateOrderItem(
-      orderId,
-      itemId,
-      updateOrderItemDto,
-      req.user.id,
-    );
-  }
+
 
   @Patch(':id/payment/mark-paid')
   @ApiOperation({ summary: 'Mark an order as paid' })

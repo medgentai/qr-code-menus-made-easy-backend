@@ -13,7 +13,7 @@ import { TaxCalculationService } from '../tax/services/tax-calculation.service';
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
 import { UpdateOrderDto, UpdateOrderItemQuantityDto } from './dto/update-order.dto';
 import { MarkOrderPaidDto, MarkOrderUnpaidDto, PaymentStatusResponse } from './dto/mark-order-paid.dto';
-import { UpdateOrderItemDto } from './dto/update-order-item.dto';
+
 import { FilterOrdersDto } from './dto/filter-orders.dto';
 import { OrderStatus, OrderPaymentStatus, OrderItemStatus, Prisma, ServiceType, PaymentMethod } from '@prisma/client';
 import { OrderItemForTaxDto } from '../tax/dto/tax-calculation.dto';
@@ -1113,133 +1113,7 @@ export class OrdersService {
     return updatedOrder;
   }
 
-  /**
-   * Update an order item
-   */
-  async updateOrderItem(
-    orderId: string,
-    itemId: string,
-    updateOrderItemDto: UpdateOrderItemDto,
-    userId: string,
-  ) {
-    // Check if order exists and user has access
-    await this.findOne(orderId, userId);
 
-    // Check if item exists and belongs to the order
-    const item = await this.prisma.orderItem.findUnique({
-      where: { id: itemId },
-    });
-
-    if (!item || item.orderId !== orderId) {
-      throw new NotFoundException(
-        `Order item with ID ${itemId} not found or does not belong to the order`,
-      );
-    }
-
-    // Prepare data for update
-    const updateData: Prisma.OrderItemUpdateInput = {};
-
-    // Update basic fields if provided
-    if (updateOrderItemDto.notes !== undefined) {
-      updateData.notes = updateOrderItemDto.notes;
-    }
-
-    if (updateOrderItemDto.status !== undefined) {
-      updateData.status = updateOrderItemDto.status;
-    }
-
-    // Handle quantity change
-    if (updateOrderItemDto.quantity !== undefined) {
-      const newQuantity = updateOrderItemDto.quantity;
-      const unitPrice = Number(item.unitPrice);
-
-      // Calculate new total price (excluding modifiers for now)
-      const newTotalPrice = unitPrice * newQuantity;
-
-      // Update quantity and total price
-      updateData.quantity = newQuantity;
-      updateData.totalPrice = newTotalPrice;
-    }
-
-    // Handle adding modifiers
-    if (updateOrderItemDto.addModifiers && updateOrderItemDto.addModifiers.length > 0) {
-      // Get the modifiers
-      const modifierIds = updateOrderItemDto.addModifiers.map(
-        (m) => m.modifierId,
-      );
-      const modifiers = await this.prisma.modifier.findMany({
-        where: {
-          id: {
-            in: modifierIds,
-          },
-        },
-      });
-
-      // Create modifiers for the item
-      for (const modifier of modifiers) {
-        await this.prisma.orderItemModifier.create({
-          data: {
-            orderItemId: itemId,
-            modifierId: modifier.id,
-            price: modifier.price,
-          },
-        });
-      }
-    }
-
-    // Handle removing modifiers
-    if (updateOrderItemDto.removeModifierIds && updateOrderItemDto.removeModifierIds.length > 0) {
-      // Delete the modifiers
-      await this.prisma.orderItemModifier.deleteMany({
-        where: {
-          id: {
-            in: updateOrderItemDto.removeModifierIds,
-          },
-          orderItemId: itemId,
-        },
-      });
-    }
-
-    // Update the item
-    const updatedItem = await this.prisma.orderItem.update({
-      where: { id: itemId },
-      data: updateData,
-      include: {
-        menuItem: true,
-        modifiers: {
-          include: {
-            modifier: true,
-          },
-        },
-      },
-    });
-
-    // Recalculate order totals if quantity or modifiers were changed
-    if (updateOrderItemDto.quantity !== undefined ||
-        (updateOrderItemDto.addModifiers && updateOrderItemDto.addModifiers.length > 0) ||
-        (updateOrderItemDto.removeModifierIds && updateOrderItemDto.removeModifierIds.length > 0)) {
-      await this.recalculateOrderTotals(orderId);
-    }
-
-    // Emit order item updated event if status was changed
-    if (updateOrderItemDto.status !== undefined) {
-      const timestamp = new Date();
-      const message = `Order item #${itemId.substring(0, 8)} updated to status ${updatedItem.status}`;
-
-      // Emit WebSocket event
-      this.orderEventsGateway.emitOrderItemEvent({
-        orderId,
-        orderItemId: itemId,
-        status: updatedItem.status,
-        timestamp,
-        message,
-      });
-
-
-    }
-
-    return updatedItem;
-  }
 
   /**
    * Remove an order
@@ -1516,6 +1390,8 @@ export class OrdersService {
     this.logger.log(`Order ${orderId} marked as paid by user ${userId}`);
     return updatedOrder;
   }
+
+
 
   /**
    * Mark an order as unpaid
