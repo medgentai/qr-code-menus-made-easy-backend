@@ -917,12 +917,28 @@ export class OrdersService {
 
     // Handle status change
     if (updateOrderDto.status !== undefined) {
-      updateData.status = updateOrderDto.status;
-
-      // If status is changed to COMPLETED, set completedAt
+      // Check if trying to mark as COMPLETED without payment
       if (updateOrderDto.status === OrderStatus.COMPLETED) {
+        // Get current order to check payment status
+        const currentOrder = await this.prisma.order.findUnique({
+          where: { id },
+          select: { paymentStatus: true, id: true }
+        });
+
+        if (!currentOrder) {
+          throw new NotFoundException('Order not found');
+        }
+
+        if (currentOrder.paymentStatus !== OrderPaymentStatus.PAID) {
+          throw new BadRequestException(
+            'Order cannot be marked as COMPLETED until payment is received. Please mark the order as paid first.'
+          );
+        }
+
         updateData.completedAt = new Date();
       }
+
+      updateData.status = updateOrderDto.status;
     }
 
     // Handle adding new items

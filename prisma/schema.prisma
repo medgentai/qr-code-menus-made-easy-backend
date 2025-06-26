@@ -168,6 +168,8 @@ model Venue {
   tables         Table[]
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  // Index for organization-based venue lookups
+  @@index([organizationId], name: "idx_venues_organization")
   @@map("venues")
 }
 
@@ -184,6 +186,8 @@ model Table {
   qrCode    QrCode?
   venue     Venue       @relation(fields: [venueId], references: [id], onDelete: Cascade)
 
+  // Index for venue-based table lookups
+  @@index([venueId], name: "idx_tables_venue")
   @@map("tables")
 }
 
@@ -353,6 +357,16 @@ model Order {
   venue            Venue?             @relation(fields: [venueId], references: [id])
   payments         Payment[]
 
+  // Performance indexes for common query patterns
+  @@index([venueId, createdAt(sort: Desc)], name: "idx_orders_venue_created")
+  @@index([venueId, status, createdAt(sort: Desc)], name: "idx_orders_venue_status_created")
+  @@index([status, createdAt(sort: Desc)], name: "idx_orders_status_created")
+  @@index([createdAt(sort: Desc)], name: "idx_orders_created")
+  @@index([paymentStatus, createdAt(sort: Desc)], name: "idx_orders_payment_status_created")
+  @@index([customerName], name: "idx_orders_customer_name")
+  @@index([customerEmail], name: "idx_orders_customer_email")
+  @@index([customerPhone], name: "idx_orders_customer_phone")
+  @@index([tableId, createdAt(sort: Desc)], name: "idx_orders_table_created")
   @@map("orders")
 }
 
