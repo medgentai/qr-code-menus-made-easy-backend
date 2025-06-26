@@ -181,15 +181,19 @@ export class TokenService {
         this.logger.debug(`Fingerprint check: ${fingerprint.substring(0, 50)}`);
         this.logger.debug(`Session userAgent: ${session.userAgent}`);
 
-        // Disable strict fingerprint check for now as it's causing issues
-        // Just log the mismatch but don't throw an error
-        if (!session.userAgent.includes(fingerprint.substring(0, 20))) {
-          this.logger.warn(`Device fingerprint mismatch for session: ${sessionId}`);
-          this.logger.warn(`Expected to contain: ${fingerprint.substring(0, 20)}`);
-          this.logger.warn(`Actual: ${session.userAgent}`);
+        // Improved fingerprint matching logic
+        const isValidFingerprint = this.validateDeviceFingerprint(fingerprint, session.userAgent, req);
 
-          // Don't throw an error, just log the warning
+        if (!isValidFingerprint) {
+          this.logger.warn(`Device fingerprint mismatch for session: ${sessionId}`);
+          this.logger.warn(`Provided fingerprint: ${fingerprint}`);
+          this.logger.warn(`Session userAgent: ${session.userAgent}`);
+
+          // For now, just log the warning but don't throw an error
+          // In production, you might want to enable this security check
           // throw new UnauthorizedException('Device fingerprint mismatch');
+        } else {
+          this.logger.debug(`Device fingerprint validation passed for session: ${sessionId}`);
         }
       }
 
@@ -549,6 +553,60 @@ export class TokenService {
       osVersion: parser.os.version || 'unknown',
       ipAddress: this.getClientIp(req),
     };
+  }
+
+  /**
+   * Validate device fingerprint against session data
+   * Uses multiple validation strategies for better compatibility
+   */
+  private validateDeviceFingerprint(fingerprint: string, sessionUserAgent: string, req: Request): boolean {
+    if (!fingerprint || !sessionUserAgent) {
+      return true; // Skip validation if either is missing
+    }
+
+    // Strategy 1: Direct substring match (current frontend sends simplified fingerprint)
+    const simplifiedFingerprint = fingerprint.trim();
+    if (sessionUserAgent.includes(simplifiedFingerprint)) {
+      return true;
+    }
+
+    // Strategy 2: Parse current request and compare with session
+    const currentDeviceInfo = this.extractDeviceInfo(req);
+    const currentUserAgentString = `${currentDeviceInfo.browser} ${currentDeviceInfo.browserVersion} on ${currentDeviceInfo.os} ${currentDeviceInfo.osVersion}`;
+
+    // Check if the session user agent matches current request
+    if (sessionUserAgent === currentUserAgentString) {
+      return true;
+    }
+
+    // Strategy 3: Compare key components (browser and OS)
+    const currentUserAgent = req.headers['user-agent'] || '';
+    const sessionParser = UAParser(sessionUserAgent);
+    const currentParser = UAParser(currentUserAgent);
+
+    // Check if browser and OS match (allowing for version differences)
+    const browserMatch = sessionParser.browser.name === currentParser.browser.name;
+    const osMatch = sessionParser.os.name === currentParser.os.name;
+
+    if (browserMatch && osMatch) {
+      return true;
+    }
+
+    // Strategy 4: Check if the provided fingerprint matches current user agent components
+    const fingerprintParts = fingerprint.split(' ');
+    const currentUserAgentParts = currentUserAgent.split(' ');
+
+    // Check if first few parts of fingerprint match current user agent
+    if (fingerprintParts.length >= 2 && currentUserAgentParts.length >= 2) {
+      const fingerprintMatch = fingerprintParts.slice(0, 2).every(part =>
+        currentUserAgentParts.some(uaPart => uaPart.includes(part))
+      );
+      if (fingerprintMatch) {
+        return true;
+      }
+    }
+
+    return false; // All validation strategies failed
   }
 
   /**
