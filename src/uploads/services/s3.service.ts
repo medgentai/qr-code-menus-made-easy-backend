@@ -1,13 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as AWS from 'aws-sdk';
+import { S3Client, HeadBucketCommand, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { v4 as uuidv4 } from 'uuid';
 import { S3UploadResult } from '../interfaces/upload.interfaces';
 
 @Injectable()
 export class S3Service {
   private readonly logger = new Logger(S3Service.name);
-  private readonly s3: AWS.S3;
+  private readonly s3: S3Client;
   private readonly bucketName: string;
 
   constructor(private configService: ConfigService) {
@@ -25,9 +26,11 @@ export class S3Service {
       this.logger.error(`AWS_REGION: ${region ? 'SET' : 'MISSING'}`);
     }
 
-    this.s3 = new AWS.S3({
-      accessKeyId,
-      secretAccessKey,
+    this.s3 = new S3Client({
+      credentials: {
+        accessKeyId,
+        secretAccessKey,
+      },
       region,
     });
 
@@ -37,7 +40,7 @@ export class S3Service {
 
   private async testConnection() {
     try {
-      await this.s3.headBucket({ Bucket: this.bucketName }).promise();
+      await this.s3.send(new HeadBucketCommand({ Bucket: this.bucketName }));
       this.logger.log(`✅ S3 connection successful. Bucket '${this.bucketName}' is accessible.`);
     } catch (error) {
       this.logger.error(`❌ S3 connection failed: ${error.message}`);
@@ -71,13 +74,12 @@ export class S3Service {
         // Files will be accessible via bucket policy instead
       };
 
-      const uploadResult = await this.s3
-        .upload(uploadParams)
-        .promise();
+      const command = new PutObjectCommand(uploadParams);
+      const uploadResult = await this.s3.send(command);
 
       return {
         key,
-        url: uploadResult.Location,
+        url: `https://${this.bucketName}.s3.${this.configService.get('AWS_REGION')}.amazonaws.com/${key}`,
         bucket: this.bucketName,
       };
     } catch (error) {
@@ -89,12 +91,11 @@ export class S3Service {
 
   async deleteFile(key: string): Promise<void> {
     try {
-      await this.s3
-        .deleteObject({
-          Bucket: this.bucketName,
-          Key: key,
-        })
-        .promise();
+      const command = new DeleteObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      });
+      await this.s3.send(command);
 
 
     } catch (error) {
@@ -110,11 +111,11 @@ export class S3Service {
 
   async getSignedUrl(key: string, expiresIn: number = 3600): Promise<string> {
     try {
-      const url = await this.s3.getSignedUrlPromise('getObject', {
+      const command = new GetObjectCommand({
         Bucket: this.bucketName,
         Key: key,
-        Expires: expiresIn,
       });
+      const url = await getSignedUrl(this.s3, command, { expiresIn });
 
       return url;
     } catch (error) {
